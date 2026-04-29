@@ -12,6 +12,8 @@
           <a href="javascript:void(0)" (click)="showSection(item.id)" class="nav-link">
             <i [class]="item.icon"></i>
             <span class="nav-text" *ngIf="isSidebarExpanded">{{ item.label }}</span>
+            <!-- Error Pulse Indicator -->
+            <span *ngIf="item.isErrorAlert" class="nav-indicator-pulse" title="System Error Detected"></span>
           </a>
         </li>
       </ul>
@@ -40,85 +42,32 @@
     </button>
   </aside>
 
-  <!-- ===== MAIN CONTENT ===== -->
-  <main class="main-content" [class.sidebar-expanded]="isSidebarExpanded"
-    [class.sidebar-collapsed]="!isSidebarExpanded">
+  <!-- ===== MAIN CONTENT (Dashboard Sections) ===== -->
+  <main class="main-content" [class.sidebar-expanded]="isSidebarExpanded" [class.sidebar-collapsed]="!isSidebarExpanded"
+    *ngIf="activeSection !== 'settings'">
     <div class="container py-4">
+
+
       <!-- Profile Section -->
       <app-profile *ngIf="activeSection === 'profile'" [isEmbedded]="true"></app-profile>
 
-      <!-- LOG HISTORY SECTION (Moved to top of main content for testing) -->
+      <!-- LOG HISTORY SECTION -->
       <div *ngIf="isSectionActive('logs')" class="section-animate">
         <app-log-history userRole="SUPER_ADMIN"></app-log-history>
       </div>
 
-      <!-- User Card - Visible on Mobile Only (Sidebar is hidden on mobile) -->
-      <!-- <div class="user-card-container mb-4 d-md-none">
-        <div class="card user-card shadow-sm border-0 rounded-4">
-          <div class="card-body p-3 p-md-4">
-            <div class="row align-items-center g-3">
-              <div class="col-auto">
-                <div class="user-avatar">
-                  <img src="/assets/univen-logo-2.png" alt="Univen Logo" class="user-logo">
-                </div>
-              </div>
-              <div class="col">
-                <h5 class="mb-1 fw-bold">{{ admin?.name }}</h5>
-                <p class="text-muted mb-2 small">{{ admin?.email }}</p>
-                <div class="badge-container mt-2">
-                  <span class="role-badge" *ngIf="admin?.role">
-                    <i class="bi bi-shield-check me-1"></i>{{ admin?.role }}
-                  </span>
-                  <span class="dept-badge" *ngIf="admin?.department">
-                    <i class="bi bi-building me-1"></i>{{ admin?.department }}
-                  </span>
-                </div>
-              </div>
-              <div class="col-auto d-none d-md-block">
-                <div class="text-end">
-                  <div class="text-muted small mb-1">Current Date</div>
-                  <div class="fw-semibold">{{ currentDate }}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div> -->
-
       <!-- ===================== OVERVIEW SECTION ===================== -->
       <div *ngIf="activeSection === 'overview'" class="section-animate">
-        <!-- Mobile Section Bar -->
-        <div class="card shadow-sm border-0 rounded-4 mb-4 d-md-none">
-          <div class="card-header bg-white border-0 py-3 px-4">
-            <div class="d-flex justify-content-center align-items-center">
-              <div class="btn-group" role="group">
-                <button type="button" class="btn btn-sm btn-outline-primary rounded-end-0"
-                  [class.active]="isSectionActive('overview')" (click)="showSection('overview')" title="Overview">
-                  <i class="bi bi-speedometer2 me-1"></i>Overview
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-primary rounded-0"
-                  [class.active]="isSectionActive('admins')" (click)="showSection('admins')" title="Admins">
-                  <i class="bi bi-people-fill me-1"></i>Admins
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-primary rounded-start-0"
-                  [class.active]="isSectionActive('departments')" (click)="showSection('departments')"
-                  title="Departments">
-                  <i class="bi bi-building me-1"></i>Departments
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
         <!-- Welcome Header -->
-        <div class="card shadow-sm border-0 rounded-4 mb-4 overview-header-card">
+        <div class="card shadow-sm border-0 rounded-0 mb-4 overview-header-card">
           <div class="card-body p-4">
             <div class="row align-items-center">
               <div class="col-12 col-md-8">
                 <h3 class="fw-bold text-primary mb-2">
                   <i class="bi bi-shield-check me-2"></i>Super Admin Dashboard
                 </h3>
-                <p class="text-muted pt-5 mb-0">Welcome back, <span class="user-fullname"
-                    [class.settings-active]="isProfileActive">{{ admin?.name }}</span>! Manage all system administrators
+                <p class="text-muted mb-0">Welcome back, <strong class="text-navy">{{ admin?.name }}</strong>!
+                  Manage all system administrators
                   from here.</p>
               </div>
               <div class="col-12 col-md-4 text-end mt-3 mt-md-0 d-flex align-items-center justify-content-end gap-2">
@@ -132,8 +81,8 @@
 
         <!-- Statistics Cards -->
         <div class="row g-4 mb-4">
-          <div class="col-12 col-md-4">
-            <div class="card shadow-sm border-0 rounded-4 h-100 stat-card stat-card-clickable"
+          <div class="col-12 col-md-6 col-lg">
+            <div class="card shadow-sm border-0 rounded-0 h-100 stat-card stat-card-clickable"
               (click)="showSection('admins')" title="Click to view all admins">
               <div class="card-body p-4">
                 <div class="d-flex align-items-center justify-content-between">
@@ -148,11 +97,10 @@
               </div>
             </div>
           </div>
-
         </div>
 
         <!-- Quick Actions -->
-        <div class="card shadow-sm border-0 rounded-4">
+        <div class="card shadow-sm border-0 rounded-0">
           <div class="card-header bg-primary-subtle border-0 p-3">
             <h5 class="mb-0 text-primary">
               <i class="bi bi-lightning-charge me-2"></i>Quick Actions
@@ -160,21 +108,21 @@
           </div>
           <div class="card-body p-4">
             <div class="row g-3">
-              <div class="col-12 col-md-6 col-lg-4">
+              <div class="col-12 col-md-6 col-lg">
                 <button class="btn btn-primary w-100 p-3 d-flex align-items-center justify-content-center gap-2"
                   (click)="showSection('admins'); openCreateAdminForm()">
                   <i class="bi bi-person-plus fs-5"></i>
                   <span>Create New Admin</span>
                 </button>
               </div>
-              <div class="col-12 col-md-6 col-lg-4">
+              <div class="col-12 col-md-6 col-lg">
                 <button class="btn btn-outline-danger w-100 p-3 d-flex align-items-center justify-content-center gap-2"
                   (click)="showSection('admins')">
                   <i class="bi bi-list-ul fs-5"></i>
                   <span>View All Admins</span>
                 </button>
               </div>
-              <div class="col-12 col-md-6 col-lg-4">
+              <div class="col-12 col-md-6 col-lg">
                 <button class="btn btn-outline-danger w-100 p-3 d-flex align-items-center justify-content-center gap-2"
                   (click)="showSection('departments'); openCreateDepartmentForm()">
                   <i class="bi bi-building fs-5"></i>
@@ -189,7 +137,7 @@
       <!-- ===================== MANAGE ADMINS SECTION ===================== -->
       <div *ngIf="activeSection === 'admins'" class="section-animate">
         <!-- Header -->
-        <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card shadow-sm border-0 rounded-0 mb-4">
           <div class="card-body p-4">
             <div class="row align-items-center">
               <div class="col-12 col-md-8">
@@ -208,7 +156,7 @@
         </div>
 
         <!-- Create Admin Form Modal -->
-        <div class="card shadow-sm border-0 rounded-4 mb-4" *ngIf="showCreateAdminForm">
+        <div class="card shadow-sm border-0 rounded-0 mb-4" *ngIf="showCreateAdminForm">
           <div class="card-header bg-primary-subtle border-0 p-3">
             <div class="d-flex justify-content-between align-items-center">
               <h5 class="mb-0 text-primary">
@@ -240,25 +188,30 @@
                     (keydown)="onEmailKeyDown($event)" required>
                 </div>
                 <div class="col-12 col-md-6">
-                  <label class="form-label">Password <span class="text-danger">*</span></label>
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label class="form-label mb-0">Password <span class="text-danger">*</span></label>
+                    <button type="button" class="btn btn-sm btn-outline-primary py-0" (click)="generatePassword(false)">
+                      <i class="bi bi-magic me-1"></i>Generate
+                    </button>
+                  </div>
                   <div class="input-group">
                     <input [type]="showPassword ? 'text' : 'password'" class="form-control"
                       [(ngModel)]="adminForm.password" name="password" placeholder="Enter password (min 6 characters)"
                       required>
-                    <button type="button" class="btn btn-outline-secondary" (click)="togglePasswordVisibility()"
-                      aria-label="Toggle password visibility">
+                    <button class="btn btn-outline-secondary border-start-0 password-toggle-btn" type="button"
+                      (click)="togglePasswordVisibility()" aria-label="Toggle password visibility">
                       <i class="bi" [ngClass]="showPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
                     </button>
                   </div>
                 </div>
                 <div class="col-12 col-md-6">
-                  <label class="form-label">Confirm Password <span class="text-danger">*</span></label>
+                  <label class="form-label mt-1">Confirm Password <span class="text-danger">*</span></label>
                   <div class="input-group">
                     <input [type]="showConfirmPassword ? 'text' : 'password'" class="form-control"
                       [(ngModel)]="adminForm.confirmPassword" name="confirmPassword" placeholder="Confirm password"
                       required>
-                    <button type="button" class="btn btn-outline-secondary" (click)="toggleConfirmPasswordVisibility()"
-                      aria-label="Toggle confirm password visibility">
+                    <button class="btn btn-outline-secondary border-start-0 password-toggle-btn" type="button"
+                      (click)="toggleConfirmPasswordVisibility()" aria-label="Toggle confirm password visibility">
                       <i class="bi" [ngClass]="showConfirmPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
                     </button>
                   </div>
@@ -306,72 +259,7 @@
           </div>
         </div>
 
-        <!-- Invite Link Card -->
-        <div class="card shadow-lg border-0 rounded-4 mb-4 border-success" *ngIf="showInviteCard && newlyCreatedAdmin">
-          <div class="card-header bg-success-subtle border-0 p-3">
-            <div class="d-flex justify-content-between align-items-center">
-              <h5 class="mb-0 text-success">
-                <i class="bi bi-envelope-check me-2"></i>Admin Created Successfully!
-              </h5>
-              <button class="btn btn-sm btn-outline-success" (click)="closeInviteCard()" title="Close invite card"
-                aria-label="Close invite card">
-                <i class="bi bi-x-lg"></i>
-              </button>
-            </div>
-          </div>
-          <div class="card-body p-4">
-            <div class="row align-items-center">
-              <div class="col-12 col-md-8">
-                <h6 class="fw-bold mb-3">
-                  <i class="bi bi-person-circle text-primary me-2"></i>
-                  {{ newlyCreatedAdmin.name }}
-                </h6>
-                <p class="text-muted mb-3">
-                  <i class="bi bi-envelope me-2"></i>{{ newlyCreatedAdmin.email }}
-                </p>
-                <div class="alert alert-info mb-3">
-                  <i class="bi bi-info-circle me-2"></i>
-                  <strong>Next Step:</strong> Customize the message below and send it to the new admin. The message
-                  includes their login credentials and invite link.
-                </div>
 
-                <div class="mb-3">
-                  <label class="form-label fw-semibold">
-                    <i class="bi bi-chat-left-text me-2"></i>Friendly Message
-                  </label>
-                  <textarea class="form-control invite-message-textarea" rows="8" [(ngModel)]="inviteMessage"
-                    name="inviteMessage" placeholder="Enter your message here..." title="Enter invite message"
-                    aria-label="Enter invite message"></textarea>
-                  <small class="text-muted">You can edit this message. It will be sent along with the login
-                    credentials.</small>
-                </div>
-
-                <div class="input-group mb-3">
-                  <input type="text" class="form-control" [value]="inviteLink" readonly id="inviteLinkInput"
-                    title="Invite link" aria-label="Invite link" placeholder="Invite link will appear here">
-                  <button class="btn btn-outline-primary" (click)="copyInviteLink()" title="Copy invite link">
-                    <i class="bi bi-clipboard me-1"></i>Copy Link
-                  </button>
-                </div>
-              </div>
-              <div class="col-12 col-md-4 text-center">
-                <div class="d-flex flex-column gap-2">
-                  <button class="btn btn-success w-100" (click)="sendInviteEmail()"
-                    [disabled]="loading || !inviteMessage.trim()">
-                    <i class="bi bi-envelope-paper me-2"></i>
-                    {{ loading ? 'Sending...' : 'Send via Email' }}
-                  </button>
-                  <button class="btn btn-outline-primary w-100" (click)="copyInviteLink()" title="Copy invite link">
-                    <i class="bi bi-clipboard me-2"></i>Copy Link Only
-                  </button>
-                  <button class="btn btn-outline-secondary w-100" (click)="closeInviteCard()">
-                    <i class="bi bi-x-circle me-2"></i>Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
         <!-- Recently Added Admins Not Logged In Log Card -->
         <div class="card shadow-sm border-0 mb-4 border-warning" *ngIf="adminsNotLoggedInBase.length > 0">
@@ -441,8 +329,8 @@
             </div>
 
             <div class="table-responsive">
-              <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
+              <table class="table modern-table align-middle mb-0">
+                <thead>
                   <tr>
                     <th class="ps-3">Name</th>
                     <th>Email</th>
@@ -455,38 +343,43 @@
                   <tr *ngFor="let admin of paginatedRecentAdmins">
                     <td class="ps-3">
                       <div class="d-flex align-items-center">
-                        <i class="bi bi-person-circle text-warning me-2"></i>
-                        <span class="fw-semibold">{{ admin.name }} {{ admin.surname }}</span>
+                        <i class="bi bi-person-circle text-warning me-2 fs-5"></i>
+                        <span class="fw-bold text-navy">{{ admin.name }} {{ admin.surname }}</span>
                       </div>
                     </td>
                     <td>
-                      <i class="bi bi-envelope me-2 text-muted"></i>
-                      <span>{{ admin.email }}</span>
+                      <div class="d-flex align-items-center">
+                        <i class="bi bi-envelope me-2 text-primary opacity-50"></i>
+                        <span>{{ admin.email }}</span>
+                      </div>
                     </td>
                     <td>
-                      <span class="badge bg-primary-subtle text-primary" *ngIf="admin.departmentName">{{
-                        admin.departmentName }}</span>
-                      <span class="text-muted" *ngIf="!admin.departmentName">-</span>
+                      <span class="status-badge status-badge-info" *ngIf="admin.departmentName">
+                        <i class="bi bi-building"></i>
+                        {{ admin.departmentName }}
+                      </span>
+                      <span class="text-muted small" *ngIf="!admin.departmentName">-</span>
                     </td>
                     <td class="text-center">
                       <span class="text-muted small" *ngIf="admin.createdAt">
+                        <i class="bi bi-clock-history me-1"></i>
                         {{ admin.createdAt | date:'short' }}
                       </span>
                       <span class="text-muted small" *ngIf="!admin.createdAt">-</span>
                     </td>
                     <td class="text-end pe-3">
                       <div class="btn-group" role="group">
-                        <button class="btn btn-outline-info btn-sm" (click)="openEditDepartmentModal(admin)"
-                          title="Edit Admin Details" aria-label="Edit Admin Details"
-                          [disabled]="admin.active === false">
+                        <button class="btn btn-outline-info btn-sm rounded-0 me-1"
+                          (click)="openEditDepartmentModal(admin)" title="Edit Admin Details"
+                          aria-label="Edit Admin Details" [disabled]="admin.active === false">
                           <i class="bi bi-pencil-square"></i>
                         </button>
-                        <button class="btn btn-sm btn-outline-info" (click)="resendInviteEmail(admin)"
+                        <button class="btn btn-sm btn-outline-info rounded-0 me-1" (click)="resendInviteEmail(admin)"
                           title="Resend email with login credentials" aria-label="Resend email">
                           <i class="bi bi-envelope-arrow-up"></i>
                         </button>
-                        <button class="btn btn-sm btn-outline-danger" (click)="deleteAdmin(admin)" title="Delete Admin"
-                          aria-label="Delete Admin">
+                        <button class="btn btn-sm btn-outline-danger rounded-0" (click)="deleteAdmin(admin)"
+                          title="Delete Admin" aria-label="Delete Admin">
                           <i class="bi bi-trash"></i>
                         </button>
                       </div>
@@ -532,7 +425,7 @@
         </div>
 
         <!-- Admins List -->
-        <div class="card shadow-sm border-0 rounded-4">
+        <div class="card shadow-sm border-0 rounded-0">
           <div class="card-header bg-primary-subtle border-0 p-3">
             <h5 class="mb-0 text-primary">
               <i class="bi bi-list-ul me-2"></i>All Admins ({{ filteredAdmins.length }})
@@ -608,8 +501,8 @@
                 filteredAdmins.length }}</small>
             </div>
             <div class="table-responsive" *ngIf="!loading && filteredAdmins.length > 0">
-              <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
+              <table class="table modern-table align-middle mb-0">
+                <thead>
                   <tr>
                     <th class="ps-3">Name</th>
                     <th>Email</th>
@@ -623,49 +516,56 @@
                   <tr *ngFor="let admin of paginatedAdmins" [class.table-secondary]="admin.active === false">
                     <td class="ps-3">
                       <div class="d-flex align-items-center">
-                        <i class="bi bi-person-circle text-primary me-2"></i>
-                        <span class="fw-semibold">{{ admin.name }} {{ admin.surname }}</span>
+                        <i class="bi bi-person-circle text-primary me-2 fs-5"></i>
+                        <span class="fw-bold text-navy">{{ admin.name }} {{ admin.surname }}</span>
                       </div>
                     </td>
-                    <td><small class="text-muted">{{ admin.email }}</small></td>
                     <td>
-                      <span *ngIf="admin.departmentName" class="badge bg-primary text-white">
-                        <i class="bi bi-building me-1"></i>{{ admin.departmentName }}
+                      <div class="d-flex align-items-center">
+                        <i class="bi bi-envelope me-2 text-primary opacity-50"></i>
+                        <span class="small">{{ admin.email }}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <span *ngIf="admin.departmentName" class="status-badge status-badge-info">
+                        <i class="bi bi-building"></i>
+                        {{ admin.departmentName }}
                       </span>
-                      <span *ngIf="!admin.departmentName" class="text-secondary">
-                        <small><i class="bi bi-dash-circle me-1"></i>No department</small>
+                      <span *ngIf="!admin.departmentName" class="text-secondary small">
+                        <i class="bi bi-dash-circle me-1"></i>No department
                       </span>
                     </td>
                     <td>
                       <small class="text-muted">
+                        <i class="bi bi-calendar-event me-1"></i>
                         {{ admin.createdAt ? (admin.createdAt | date:'short') : 'N/A' }}
                       </small>
                     </td>
                     <td class="text-center">
-                      <span class="badge rounded-pill px-3 py-1" [ngClass]="{
-                              'bg-success': admin.active !== false,
-                              'bg-secondary': admin.active === false
-                            }">
+                      <span class="status-badge" [ngClass]="{
+                               'status-badge-success': admin.active !== false,
+                               'status-badge-secondary': admin.active === false
+                             }">
+                        <i class="bi" [class.bi-check-circle]="admin.active !== false"
+                          [class.bi-x-circle]="admin.active === false"></i>
                         {{ admin.active !== false ? 'Active' : 'Inactive' }}
                       </span>
                     </td>
                     <td class="text-center pe-3">
                       <div class="btn-group" role="group">
-                        <button class="btn btn-outline-info btn-sm" (click)="openEditDepartmentModal(admin)"
-                          title="Edit Admin Details" aria-label="Edit Admin Details"
-                          [disabled]="admin.active === false">
+                        <button class="btn btn-outline-info btn-sm rounded-0 me-1"
+                          (click)="openEditDepartmentModal(admin)" title="Edit Admin Details"
+                          aria-label="Edit Admin Details" [disabled]="admin.active === false">
                           <i class="bi bi-pencil-square"></i>
                         </button>
-                        <button class="btn" [class.btn-outline-danger]="admin.active !== false"
+                        <button class="btn rounded-0" [class.btn-outline-danger]="admin.active !== false"
                           [class.btn-outline-success]="admin.active === false" [class.btn-sm]="true"
-                          [class.rounded-end-pill]="true" (click)="deactivateAdmin(admin)"
+                          (click)="deactivateAdmin(admin)"
                           [title]="admin.active !== false ? 'Deactivate Admin' : 'Activate Admin'"
                           [attr.aria-label]="admin.active !== false ? 'Deactivate Admin' : 'Activate Admin'"
                           type="button">
                           <i class="bi" [class.bi-pause-circle]="admin.active !== false"
                             [class.bi-play-circle]="admin.active === false"></i>
-                          <span class="visually-hidden">{{ admin.active !== false ? 'Deactivate Admin' : 'Activate
-                            Admin' }}</span>
                         </button>
                       </div>
                     </td>
@@ -740,8 +640,9 @@
                 </div>
                 <div class="mb-3">
                   <label class="form-label">Department</label>
-                  <!-- ✅ Department selector - shows department from backend (selected when admin was created) -->
+                  <!-- âœ… Department selector - shows department from backend (selected when admin was created) -->
                   <select class="form-select" [(ngModel)]="editDepartmentForm.departmentId" name="editDepartmentId"
+                    (change)="onDepartmentChange($event)"
                     title="Select department" aria-label="Select department">
                     <option [ngValue]="null">No Department</option>
                     <option *ngFor="let dept of activeDepartments" [ngValue]="dept.id">
@@ -756,25 +657,30 @@
                 </div>
                 <hr class="my-4">
                 <div class="mb-3">
-                  <label class="form-label">New Password <span class="text-muted">(Optional)</span></label>
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label class="form-label mb-0">New Password <span class="text-muted">(Optional)</span></label>
+                    <button type="button" class="btn btn-sm btn-outline-info py-0" (click)="generatePassword(true)">
+                      <i class="bi bi-magic me-1"></i>Generate
+                    </button>
+                  </div>
                   <div class="input-group">
                     <input [type]="showEditPassword ? 'text' : 'password'" class="form-control"
                       [(ngModel)]="editDepartmentForm.password" name="editAdminPassword"
                       placeholder="Leave blank to keep current password" autocomplete="new-password">
-                    <button type="button" class="btn btn-outline-secondary" (click)="toggleEditPasswordVisibility()"
-                      aria-label="Toggle password visibility">
+                    <button class="btn btn-outline-secondary border-start-0 password-toggle-btn" type="button"
+                      (click)="toggleEditPasswordVisibility()" aria-label="Toggle password visibility">
                       <i class="bi" [ngClass]="showEditPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
                     </button>
                   </div>
                   <small class="text-muted">Leave blank if you don't want to change the password.</small>
                 </div>
                 <div class="mb-3">
-                  <label class="form-label">Confirm New Password <span class="text-muted">(Optional)</span></label>
+                  <label class="form-label mt-1">Confirm New Password <span class="text-muted">(Optional)</span></label>
                   <div class="input-group">
                     <input [type]="showEditConfirmPassword ? 'text' : 'password'" class="form-control"
                       [(ngModel)]="editDepartmentForm.confirmPassword" name="editAdminConfirmPassword"
                       placeholder="Confirm new password" autocomplete="new-password">
-                    <button type="button" class="btn btn-outline-secondary"
+                    <button class="btn btn-outline-secondary border-start-0 password-toggle-btn" type="button"
                       (click)="toggleEditConfirmPasswordVisibility()" aria-label="Toggle confirm password visibility">
                       <i class="bi" [ngClass]="showEditConfirmPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
                     </button>
@@ -801,7 +707,7 @@
       <!-- ===================== DEPARTMENTS SECTION ===================== -->
       <div *ngIf="activeSection === 'departments'" class="section-animate">
         <!-- Header -->
-        <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card shadow-sm border-0 rounded-0 mb-4">
           <div class="card-body p-4">
             <div class="row align-items-center">
               <div class="col-12 col-md-8">
@@ -820,7 +726,7 @@
         </div>
 
         <!-- Create/Edit Department Form -->
-        <div class="card shadow-sm border-0 rounded-4 mb-4" *ngIf="showCreateDepartmentForm">
+        <div class="card shadow-sm border-0 rounded-0 mb-4" *ngIf="showCreateDepartmentForm">
           <div class="card-header bg-primary-subtle border-0 p-3">
             <div class="d-flex justify-content-between align-items-center">
               <h5 class="mb-0 text-primary">
@@ -859,7 +765,7 @@
         </div>
 
         <!-- Departments List -->
-        <div class="card shadow-sm border-0 rounded-4">
+        <div class="card shadow-sm border-0 rounded-0">
           <div class="card-header bg-primary-subtle border-0 p-3">
             <h5 class="mb-0 text-primary">
               <i class="bi bi-list-ul me-2"></i>All Departments ({{ departments.length }})
@@ -876,55 +782,55 @@
               <p class="text-muted mt-3">No departments found. Create your first department above.</p>
             </div>
             <div class="table-responsive" *ngIf="!isLoadingDepartments && departments.length > 0">
-              <table class="table table-hover mb-0">
-                <thead class="table-light">
+              <table class="table modern-table align-middle mb-0">
+                <thead>
                   <tr>
-                    <th>ID</th>
+                    <th class="ps-3">ID</th>
                     <th>Department Name</th>
                     <th>Fields Count</th>
                     <th>Status</th>
-                    <th>Actions</th>
+                    <th class="text-end pe-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr *ngFor="let dept of departments" [class.table-secondary]="dept.active === false">
-                    <td>
-                      <span class="badge bg-secondary">#{{ dept.id }}</span>
+                    <td class="ps-3">
+                      <span class="status-badge status-badge-secondary">#{{ dept.id }}</span>
                     </td>
                     <td>
                       <div class="d-flex align-items-center gap-2">
-                        <i class="bi bi-building text-primary"></i>
-                        <strong>{{ dept.name }}</strong>
+                        <i class="bi bi-building text-primary fs-5"></i>
+                        <strong class="text-navy">{{ dept.name }}</strong>
                       </div>
                     </td>
                     <td>
-                      <span class="badge bg-info">
+                      <span class="status-badge status-badge-info">
+                        <i class="bi bi-layers"></i>
                         {{ dept.fields?.length || 0 }} field{{ (dept.fields?.length || 0) !== 1 ? 's' : '' }}
                       </span>
                     </td>
                     <td>
-                      <span class="badge" [class.bg-success]="dept.active !== false"
-                        [class.bg-secondary]="dept.active === false">
+                      <span class="status-badge" [class.status-badge-success]="dept.active !== false"
+                        [class.status-badge-secondary]="dept.active === false">
                         <i class="bi" [class.bi-check-circle]="dept.active !== false"
                           [class.bi-x-circle]="dept.active === false"></i>
                         {{ dept.active !== false ? 'Active' : 'Inactive' }}
                       </span>
                     </td>
-                    <td>
-                      <div class="btn-group btn-group-sm">
-                        <button class="btn btn-outline-primary" (click)="editDepartment(dept)" title="Edit Department"
-                          aria-label="Edit Department" [disabled]="dept.active === false" type="button">
+                    <td class="text-end pe-3">
+                      <div class="btn-group" role="group">
+                        <button class="btn btn-outline-primary btn-sm rounded-0 me-1" (click)="editDepartment(dept)"
+                          title="Edit Department" aria-label="Edit Department" [disabled]="dept.active === false"
+                          type="button">
                           <i class="bi bi-pencil"></i>
                         </button>
-                        <button class="btn" [class.btn-outline-danger]="dept.active !== false"
+                        <button class="btn btn-sm rounded-0" [class.btn-outline-danger]="dept.active !== false"
                           [class.btn-outline-success]="dept.active === false" (click)="deactivateDepartment(dept)"
                           [title]="dept.active !== false ? 'Deactivate Department' : 'Activate Department'"
                           [attr.aria-label]="dept.active !== false ? 'Deactivate Department' : 'Activate Department'"
                           type="button">
                           <i class="bi" [class.bi-pause-circle]="dept.active !== false"
                             [class.bi-play-circle]="dept.active === false"></i>
-                          <span class="visually-hidden">{{ dept.active !== false ? 'Deactivate Department' : 'Activate
-                            Department' }}</span>
                         </button>
                       </div>
                     </td>
@@ -936,8 +842,338 @@
 
         </div>
       </div>
-
     </div>
 
   </main>
+
+  <!-- ===== SETTINGS SECTION (Nested on Dashboard Wrapper) ===== -->
+  <main class="main-content" [class.sidebar-expanded]="isSidebarExpanded" [class.sidebar-collapsed]="!isSidebarExpanded"
+    *ngIf="activeSection === 'settings'">
+
+    <div class="settings-seamless-view">
+      <div class="settings-header position-relative">
+        <div class="settings-header-bg"></div>
+        <div class="p-4 p-md-5 position-relative z-1">
+          <div class="settings-title-container">
+            <h3 class="fw-bold mb-2 settings-title"><i class="bi bi-gear me-2"></i>Settings</h3>
+            <p class="settings-subtitle mb-0 fs-6">Manage system configurations and your personal profile.</p>
+          </div>
+        </div>
+
+        <!-- Tab Navigation (Pills style) -->
+        <div class="settings-tabs-wrapper position-relative z-1">
+          <div class="settings-tabs-container">
+            <ul class="nav nav-pills mb-0">
+              <li class="nav-item">
+                <a class="nav-link settings-nav-link" [class.active]="activeSettingTab === 'system'"
+                  (click)="activeSettingTab = 'system'" href="javascript:void(0)">
+                  <i class="bi bi-cpu fs-5"></i>
+                  <span>System Settings</span>
+                </a>
+              </li>
+              <li class="nav-item mx-2">
+                <a class="nav-link settings-nav-link" [class.active]="activeSettingTab === 'policy'"
+                  (click)="activeSettingTab = 'policy'" href="javascript:void(0)">
+                  <i class="bi bi-shield-check fs-5"></i>
+                  <span>System Policy</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link settings-nav-link" [class.active]="activeSettingTab === 'profile'"
+                  (click)="activeSettingTab = 'profile'" href="javascript:void(0)">
+                  <i class="bi bi-person-badge fs-5"></i>
+                  <span>Profile Settings</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-content-wrapper py-4 py-md-5">
+        <div class="settings-content-container">
+          <!-- System Settings Tab Content -->
+          <div *ngIf="activeSettingTab === 'system'" class="tab-pane-animate">
+            <div class="row">
+              <div class="col-12 col-xl-8 pe-xl-5">
+                <h5 class="fw-bold text-navy mb-4 d-flex align-items-center">
+                  <span class="bg-navy-subtle text-primary p-2 rounded-3 me-3 d-flex"><i
+                      class="bi bi-window-sidebar"></i></span>
+                  Help Widget Content
+                </h5>
+
+                <form (ngSubmit)="saveHelpSettings()" class="settings-form mt-4">
+                  <div class="mb-4">
+                    <label class="settings-form-label">About System Description</label>
+                    <textarea class="form-control modern-form-control" [(ngModel)]="helpSettings.about" name="helpAbout"
+                      rows="4" placeholder="Enter a brief description of the system..."></textarea>
+                    <div class="form-text small mt-2 d-flex align-items-center">
+                      <i class="bi bi-info-circle text-primary me-2"></i>
+                      This text appears in the 'About the System' section of the help widget.
+                    </div>
+                  </div>
+
+                  <div class="row g-4 mb-4">
+                    <div class="col-md-6">
+                      <label class="settings-form-label">Support Phone Number</label>
+                      <div class="input-group modern-input-group">
+                        <span class="input-group-text"><i class="bi bi-telephone text-primary"></i></span>
+                        <input type="text" class="form-control" [(ngModel)]="helpSettings.phone" name="helpPhone"
+                          placeholder="+27 15 962 8000">
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <label class="settings-form-label">Support Email</label>
+                      <div class="input-group modern-input-group">
+                        <span class="input-group-text"><i class="bi bi-envelope text-primary"></i></span>
+                        <input type="email" class="form-control" [(ngModel)]="helpSettings.email" name="helpEmail"
+                          placeholder="support@univen.ac.za">
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="mb-4">
+                    <label class="settings-form-label">Office Location</label>
+                    <div class="input-group modern-input-group">
+                      <span class="input-group-text"><i class="bi bi-geo-alt text-primary"></i></span>
+                      <input type="text" class="form-control" [(ngModel)]="helpSettings.location" name="helpLocation"
+                        placeholder="Thohoyandou, Limpopo">
+                    </div>
+                  </div>
+
+                  <div class="mb-4">
+                    <label class="settings-form-label">Help Trigger Text</label>
+                    <div class="input-group modern-input-group">
+                      <span class="input-group-text"><i class="bi bi-chat-dots text-primary"></i></span>
+                      <input type="text" class="form-control" [(ngModel)]="helpSettings.triggerText"
+                        name="helpTriggerText" placeholder="e.g., Need Help?">
+                    </div>
+                    <div class="form-text small mt-2">Short text that appears next to the floating help icon.</div>
+                  </div>
+
+                  <div class="mb-5">
+                    <label class="settings-form-label">Official Website URL</label>
+                    <div class="input-group modern-input-group">
+                      <span class="input-group-text"><i class="bi bi-globe2 text-primary"></i></span>
+                      <input type="url" class="form-control" [(ngModel)]="helpSettings.website" name="helpWebsite"
+                        placeholder="https://www.univen.ac.za/">
+                    </div>
+                  </div>
+
+                  <div class="d-flex justify-content-end mt-4 pt-3 border-top border-light">
+                    <button type="submit"
+                      class="btn btn-navy px-5 py-2-5 rounded-0 shadow-sm d-flex align-items-center gap-2"
+                      [disabled]="isSavingHelpSettings">
+                      <i class="bi bi-save" *ngIf="!isSavingHelpSettings"></i>
+                      <span class="spinner-border spinner-border-sm" *ngIf="isSavingHelpSettings"></span>
+                      <span class="fw-semibold">{{ isSavingHelpSettings ? 'Saving Changes...' : 'Save Settings'
+                        }}</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <div class="col-12 col-xl-4 mt-5 mt-xl-0 border-start-xl ps-xl-4 position-relative">
+                <div class="card settings-info-card border-0 rounded-4 h-100">
+                  <div class="card-body p-4 p-md-5">
+                    <div class="d-flex align-items-center mb-4">
+                      <div class="bg-primary-subtle p-3 rounded-circle me-3 text-primary d-flex">
+                        <i class="bi bi-info-circle-fill fs-4"></i>
+                      </div>
+                      <h5 class="fw-bold mb-0 text-navy">Dashboard Manager</h5>
+                    </div>
+
+                    <p class="text-muted mb-4 fs-6 lh-lg">
+                      Changes to the Help Widget content will be reflected globally across the entire application
+                      interface.
+                    </p>
+
+                    <div
+                      class="alert alert-primary bg-primary-subtle border-0 rounded-4 p-4 d-flex align-items-start gap-3 mb-0">
+                      <i class="bi bi-lightbulb-fill text-primary mt-1"></i>
+                      <div class="small fw-medium text-primary-emphasis lh-base">
+                        The Help Widget is visible on the login page and helps users get quick support without signing
+                        in to the portal.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- System Policy Tab Content -->
+          <div *ngIf="activeSettingTab === 'policy'" class="tab-pane-animate">
+            <div class="row">
+              <div class="col-12 col-xl-8 pe-xl-5">
+                <h5 class="fw-bold text-navy mb-4 d-flex align-items-center">
+                  <span class="bg-navy-subtle text-primary p-2 rounded-3 me-3 d-flex"><i
+                      class="bi bi-shield-lock"></i></span>
+                  System Policy Editor
+                </h5>
+
+                <form (ngSubmit)="savePolicy()" class="settings-form mt-4">
+                  <div class="mb-4">
+                    <label class="settings-form-label">Privacy & Usage Policy Content</label>
+                    <textarea class="form-control modern-form-control font-monospace" [(ngModel)]="policyContent"
+                      name="policyContent" rows="15"
+                      placeholder="Enter the official system policy content here..."></textarea>
+                    <div class="form-text small mt-2 d-flex align-items-center">
+                      <i class="bi bi-info-circle text-primary me-2"></i>
+                      This content is displayed to users in the help section and during the registration process.
+                    </div>
+                  </div>
+
+                  <div class="d-flex justify-content-end mt-4 pt-3 border-top border-light">
+                    <button type="submit"
+                      class="btn btn-navy px-5 py-2-5 rounded-pill shadow-sm d-flex align-items-center gap-2"
+                      [disabled]="isSavingPolicy">
+                      <i class="bi bi-save" *ngIf="!isSavingPolicy"></i>
+                      <span class="spinner-border spinner-border-sm" *ngIf="isSavingPolicy"></span>
+                      <span class="fw-semibold">{{ isSavingPolicy ? 'Saving Policy...' : 'Save Policy' }}</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <div class="col-12 col-xl-4 mt-5 mt-xl-0 border-start-xl ps-xl-4 position-relative">
+                <div class="card settings-info-card border-0 rounded-4 h-100">
+                  <div class="card-body p-4 p-md-5">
+                    <div class="d-flex align-items-center mb-4">
+                      <div class="bg-primary-subtle p-3 rounded-circle me-3 text-primary d-flex">
+                        <i class="bi bi-shield-check fs-4"></i>
+                      </div>
+                      <h5 class="fw-bold mb-0 text-navy">Legal Compliance</h5>
+                    </div>
+
+                    <p class="text-muted mb-4 fs-6 lh-lg">
+                      Ensure all policy updates are compliant with University regulations and data protection laws
+                      (e.g., POPIA).
+                    </p>
+
+                    <div
+                      class="alert alert-primary bg-primary-subtle border-0 rounded-4 p-4 d-flex align-items-start gap-3 mb-0">
+                      <i class="bi bi-clock-history text-primary mt-1"></i>
+                      <div class="small fw-medium text-primary-emphasis lh-base">
+                        Policy updates are effective immediately for all users. We recommend keeping a backup of
+                        previous versions.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Profile Settings Tab Content -->
+          <div *ngIf="activeSettingTab === 'profile'" class="tab-pane-animate">
+            <div class="row">
+              <div class="col-12 border-bottom border-light pb-4 mb-4">
+                <h5 class="fw-bold text-navy mb-2 d-flex align-items-center">
+                  <span class="bg-navy-subtle text-primary p-2 rounded-3 me-3 d-flex"><i
+                      class="bi bi-person-fill-gear"></i></span>
+                  My Profile Settings
+                </h5>
+                <p class="text-muted small mb-0 ms-5 ps-3">Update your core personal information and password
+                  securely.</p>
+              </div>
+              <div class="col-12">
+                <app-profile [isEmbedded]="true"></app-profile>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Invite Link Modal -->
+  <div class="modal fade modern-success-modal" [class.show]="showInviteCard" 
+    [ngStyle]="{'display': showInviteCard ? 'block' : 'none', 'background-color': showInviteCard ? 'rgba(0,0,0,0.5)' : 'transparent'}"
+    tabindex="-1" aria-labelledby="inviteAdminModalLabel" *ngIf="showInviteCard && newlyCreatedAdmin">
+    <div class="modal-dialog modal-dialog-centered modal-lg animate__animated animate__zoomIn">
+      <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+        <div class="modal-header bg-navy text-white py-3 border-0">
+          <h5 class="modal-title fw-bold" id="inviteAdminModalLabel">
+            <i class="bi bi-envelope-check me-2"></i>Admin Created Successfully!
+          </h5>
+          <button type="button" class="btn-close btn-close-white" (click)="closeInviteCard()" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-4 bg-white">
+          <div class="row g-4">
+            <div class="col-lg-7">
+              <div class="d-flex align-items-center mb-4">
+                <div class="flex-shrink-0 bg-success-subtle rounded-3 p-3">
+                  <i class="bi bi-person-circle fs-3 text-navy"></i>
+                </div>
+                <div class="ms-3">
+                  <h6 class="fw-bold mb-1 text-navy">{{ newlyCreatedAdmin.name }}</h6>
+                  <p class="text-muted mb-0 small">
+                    <i class="bi bi-envelope me-1"></i>{{ newlyCreatedAdmin.email }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="p-3 bg-light rounded-4 h-100 shadow-sm">
+                <label class="form-label fw-bold text-navy mb-3">
+                  <i class="bi bi-chat-left-text me-2"></i>Friendly Message
+                </label>
+                <textarea class="form-control border-0 shadow-none bg-white rounded-3 p-3" 
+                  rows="8" 
+                  [(ngModel)]="inviteMessage"
+                  name="inviteMessage"
+                  style="resize: none; font-size: 0.95rem; line-height: 1.6;"></textarea>
+                <div class="mt-2 text-end">
+                  <small class="text-muted">You can edit this message. It will be sent along with the credentials.</small>
+                </div>
+              </div>
+            </div>
+            
+            <div class="col-lg-5">
+              <div class="h-100 d-flex flex-column">
+                <div class="mb-4">
+                  <label class="form-label fw-bold text-navy mb-2">
+                    <i class="bi bi-link-45deg me-2"></i>System Access Link
+                  </label>
+                  <div class="input-group shadow-sm rounded-3 overflow-hidden">
+                    <input type="text" class="form-control border-0 bg-light py-2 ps-3" [value]="inviteLink" readonly>
+                    <button class="btn btn-navy px-3" type="button" (click)="copyInviteLink()">
+                      <i class="bi bi-clipboard me-1"></i>Copy
+                    </button>
+                  </div>
+                </div>
+
+                <div class="alert alert-info border-0 rounded-4 shadow-sm mb-4 p-3">
+                  <div class="d-flex">
+                    <div class="flex-shrink-0">
+                      <i class="bi bi-info-circle-fill fs-4 text-info"></i>
+                    </div>
+                    <div class="ms-3">
+                      <h6 class="fw-bold mb-1">Next Step</h6>
+                      <p class="mb-0 small text-dark">
+                        Send this customized message to provide the admin with their login credentials and the invite link.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mt-auto d-grid gap-3">
+                  <button class="btn btn-navy py-3 fw-bold rounded-3 shadow-sm d-flex align-items-center justify-content-center" 
+                    (click)="sendInviteEmail()" [disabled]="loading || !inviteMessage.trim()">
+                    <span *ngIf="loading" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    <i *ngIf="!loading" class="bi bi-envelope-paper me-2"></i>
+                    {{ loading ? 'Sending...' : 'Send via Email' }}
+                  </button>
+                  <button class="btn btn-outline-secondary py-2 fw-semibold border-0" (click)="closeInviteCard()">
+                    <i class="bi bi-x-circle me-2"></i>Dismiss for now
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>

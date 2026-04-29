@@ -1,7 +1,8 @@
 import { Injectable, Injector } from '@angular/core';
 import { Router } from '@angular/router';
-import { Observable, BehaviorSubject, throwError } from 'rxjs';
-import { tap, map, catchError } from 'rxjs/operators';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { Observable, BehaviorSubject, throwError, of, firstValueFrom } from 'rxjs';
+import { tap, map, catchError, switchMap } from 'rxjs/operators';
 import { ApiService } from './api.service';
 import { StorageService } from './storage.service';
 import { DataPreloadService } from './data-preload.service';
@@ -26,6 +27,7 @@ export interface LoginResponse {
     department?: string;
     departmentId?: number; // Department ID for admins
     field?: string;
+    requiresPasswordChange: boolean;
   };
 }
 
@@ -45,6 +47,36 @@ export interface CurrentUser {
   idNumber?: string;
   startDate?: string;
   endDate?: string;
+  requiresPasswordChange: boolean;
+}
+
+export interface UnivenResponse {
+  user: {
+    username: string;
+    roles: string;
+  };
+  student?: {
+    surname: string;
+    firstNames: string;
+    departmentName: string;
+    qualificationName: string;
+    idNumber: string;
+    gender: string;
+  };
+  staff?: {
+    staffNumber: string;
+    surname: string;
+    firstname: string;
+    postType: string;
+    departmentName: string;
+    postName: string;
+    idNumber: string;
+    gender: string;
+  };
+  communication?: {
+    communicationNumber: string; // Email
+    cellNo: string;
+  };
 }
 
 @Injectable({
@@ -58,6 +90,7 @@ export class AuthService {
 
   constructor(
     private api: ApiService,
+    private http: HttpClient, // Inject HttpClient for external requests
     private storage: StorageService,
     private router: Router,
     private dataPreloadService: DataPreloadService,
@@ -65,6 +98,11 @@ export class AuthService {
   ) {
     // Load user from storage on init
     this.loadUserFromStorage();
+    
+    // Set up WebSocket subscriptions after a short delay to avoid circular dependencies
+    setTimeout(() => {
+      this.setupWebSocketSubscriptions();
+    }, 1000);
   }
 
   /**
@@ -82,6 +120,34 @@ export class AuthService {
       this.notificationService = this.injector.get(NotificationService);
     }
     return this.notificationService;
+  }
+
+  /**
+   * Set up WebSocket subscriptions to listen for real-time profile updates
+   */
+  private setupWebSocketSubscriptions(): void {
+    try {
+      const wsService = this.getWebSocketService();
+      wsService.userUpdates$.subscribe(update => {
+        if (update.type === 'USER_PROFILE_UPDATED') {
+          const currentUser = this.currentUserSubject.value;
+          if (currentUser && update.data && update.data.email === currentUser.email) {
+            // Merge the new data into the current user state
+            const updatedUser = { 
+              ...currentUser, 
+              name: update.data.name || currentUser.name,
+              surname: update.data.surname || currentUser.surname,
+              department: update.data.department || currentUser.department
+            };
+            this.storage.setItem('currentUser', updatedUser);
+            this.currentUserSubject.next(updatedUser);
+            console.log('✅ Auto-updated current user from real-time profile change');
+          }
+        }
+      });
+    } catch (error) {
+      console.warn('⚠️ Could not set up WebSocket subscriptions in AuthService:', error);
+    }
   }
 
   /**
@@ -219,6 +285,124 @@ export class AuthService {
   }
 
   /**
+   * Check authentication with external Univen API (Sequential Fallback)
+   * This is called if local login fails with 401 or 404
+   */
+  checkUnivenAuth(identity: string, password: string): Observable<any> {
+    // Sanitize ID (extract only numeric ID if email is provided)
+    const id = identity.includes('@') ? identity.split('@')[0] : identity;
+    const url = `https://univenproduction-integration.azuremicroservices.io/api/user/${id}`;
+
+    // Basic Auth Header
+    const authHeader = 'Basic ' + btoa(`${id}:${password}`);
+    const headers = new HttpHeaders({
+      'Authorization': authHeader,
+      'Accept': 'application/json'
+    });
+
+    console.log(`AuthService - Attempting Univen Auth:`, {
+        url,
+        identity_sanitized: id,
+        has_password: !!password,
+        auth_header_preview: authHeader.substring(0, 15) + '...'
+    });
+
+    return this.http.get<UnivenResponse>(url, { headers }).pipe(
+      catchError(error => {
+        console.error('AuthService - Univen API authentication failed:', error);
+        return throwError(() => new Error('Univen authentication failed or user not found.'));
+      }),
+      switchMap(univenData => {
+        if (!univenData || !univenData.user) {
+          return throwError(() => new Error('Invalid response from Univen system.'));
+        }
+
+        console.log('AuthService - Univen Auth Successful. Checking local account...');
+
+        // Now we need to check if this user exists locally or provision them
+        // We call our OWN login method to ensure token storage and redirection happen correctly
+        return this.login({ username: id, password }).pipe(
+          catchError(localError => {
+            // If local login fails, it means they need to be provisioned
+            const status = localError.status || (localError.error && localError.error.status);
+            if (status === 404 || status === 401 || localError.message?.toLowerCase().includes('not found')) {
+              console.log('AuthService - User not found locally. Proceeding to Auto-Provisioning...');
+              return this.provisionUserFromUniven(univenData, password);
+            }
+            return throwError(() => localError);
+          })
+        );
+      })
+    );
+  }
+
+  /**
+   * Provision a Univen user into the local database automatically
+   */
+  private provisionUserFromUniven(data: UnivenResponse, password: string): Observable<any> {
+    let role: 'INTERN' | 'SUPERVISOR' | 'ADMIN' = 'INTERN';
+    let name = '';
+    let surname = '';
+    let email = '';
+    let departmentName = '';
+    let fieldStr = '';
+    let idNumber = '';
+    const username = data.user.username;
+
+    // Map Staff vs Student
+    if (data.staff) {
+      name = data.staff.firstname;
+      surname = data.staff.surname;
+      email = data.communication?.communicationNumber || `${username}@univen.ac.za`;
+      departmentName = data.staff.departmentName;
+      fieldStr = data.staff.postName;
+      idNumber = data.staff.idNumber;
+      
+      // Staff mapping: ADM -> ADMIN, others -> SUPERVISOR
+      role = data.staff.postType === 'ADM' ? 'ADMIN' : 'SUPERVISOR';
+    } else if (data.student) {
+      name = data.student.firstNames;
+      surname = data.student.surname;
+      email = data.communication?.communicationNumber || `${username}@univen.ac.za`;
+      departmentName = data.student.departmentName;
+      fieldStr = data.student.qualificationName;
+      idNumber = data.student.idNumber;
+      role = 'INTERN';
+    }
+
+    const regData = {
+      username: username,
+      email: email,
+      password: password,
+      role: role,
+      name: name,
+      surname: surname,
+      department: departmentName || 'General',
+      field: fieldStr || 'General',
+      idNumber: idNumber || 'N/A',
+      employerName: data.staff ? 'Univen Staff' : 'Univen Student',
+      startDate: new Date().toISOString().split('T')[0], // Default start date
+      endDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0], // Default 1 year
+      verificationCode: 'UNIVEN' // Tell backend this is a pre-verified Univen user
+    };
+
+    console.log(`AuthService - Provisioning local account for ${username} as ${role}`);
+
+    // Call registration endpoint
+    return this.api.post<any>('auth/register', regData).pipe(
+      switchMap(() => {
+        console.log(`AuthService - Local provision successful. Logging in...`);
+        // Use standard login() for redirection/state
+        return this.login({ username, password });
+      }),
+      catchError(err => {
+        console.error('AuthService - Provisioning failed:', err);
+        return throwError(() => new Error('Failed to create internal profile for Univen user.'));
+      })
+    );
+  }
+
+  /**
    * Get current user from backend
    */
   getCurrentUser(): Observable<CurrentUser> {
@@ -251,6 +435,19 @@ export class AuthService {
    */
   getCurrentUserSync(): CurrentUser | null {
     return this.currentUserSubject.value || this.storage.getItem<CurrentUser>('currentUser');
+  }
+
+  /**
+   * Get current user from server and update local state
+   */
+  getCurrentUserFromServer(): Observable<CurrentUser> {
+    return this.api.get<CurrentUser>('auth/me').pipe(
+      map(user => {
+        this.storage.setItem('currentUser', user);
+        this.currentUserSubject.next(user);
+        return user;
+      })
+    );
   }
 
   /**
@@ -300,6 +497,13 @@ export class AuthService {
    * Redirect user to appropriate dashboard after login
    */
   private redirectAfterLogin(role: string): void {
+    const user = this.currentUserSubject.value;
+    if (user && user.requiresPasswordChange) {
+      console.log('🔒 Password change required. Redirecting to force-password-change page.');
+      this.router.navigate(['/auth/force-password-change']);
+      return;
+    }
+
     switch (role) {
       case 'SUPER_ADMIN':
         this.router.navigate(['/super-admin/super-admin-dashboard']);

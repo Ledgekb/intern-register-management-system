@@ -40,16 +40,17 @@
 
 
 .user-card {
-  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-  border: 1px solid rgba(30, 58, 95, 0.15);
-  border-radius: 20px !important;
+  border-radius: 16px !important;
+  background: #ffffff;
+  border: 1px solid rgba(13, 110, 253, 0.05);
   overflow: hidden;
-  transition: all 0.3s ease;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02) !important;
 }
 
 .user-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.08);
-  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(30, 58, 95, 0.08) !important;
+  transform: translateY(-3px);
 }
 
 .user-avatar {
@@ -59,10 +60,10 @@
   align-items: center;
   justify-content: center;
   background: #ffffff;
-  border-radius: 50%;
+  border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(30, 58, 95, 0.3);
-  border: 2px solid rgba(30, 58, 95, 0.1);
+  box-shadow: 0 4px 15px rgba(30, 58, 95, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.8);
 }
 
 .user-logo {
@@ -85,7 +86,7 @@
 
 @media (max-width: 768px) {
   .user-card {
-    border-radius: 18px !important;
+    border-radius: 0 !important;
     overflow: hidden;
   }
 
@@ -119,7 +120,7 @@
   }
 
   .user-card {
-    border-radius: 20px !important;
+    border-radius: 0 !important;
     overflow: hidden;
   }
 
@@ -151,18 +152,15 @@
   position: fixed;
   left: 0;
   top: 60px;
-  /* Below navbar */
   height: calc(100vh - 60px);
-  width: 260px;
+  width: var(--sidebar-width);
   background: var(--univen-navy);
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 1000;
-  border-top-right-radius: 20px;
-  overflow: visible !important;
-  /* Allow toggle button to be visible */
+  border-radius: 0;
 }
 
 
@@ -198,7 +196,7 @@
 
 
 .sidebar.collapsed {
-  width: 70px;
+  width: var(--sidebar-collapsed-width);
 }
 
 /* Relocated Sidebar Toggle Button */
@@ -448,7 +446,7 @@
 
 /* ===================== MAIN CONTENT ===================== */
 .main-content {
-  margin-left: 260px;
+  margin-left: var(--sidebar-width);
   flex: 1;
   transition: margin-left 0.3s ease;
   background: transparent;
@@ -458,7 +456,7 @@
 }
 
 .main-content.sidebar-collapsed {
-  margin-left: 70px;
+  margin-left: var(--sidebar-collapsed-width);
   padding-left: 15px;
 }
 
@@ -561,44 +559,177 @@
   overflow: hidden;
 }
 
+/* Modern Table Styles */
 .leave-requests-table {
-  font-size: 0.9rem;
+  border-collapse: separate;
+  border-spacing: 0 8px;
+  width: 100%;
 }
 
 .leave-requests-table thead th {
-  font-weight: 600;
-  text-transform: uppercase;
+  background: transparent;
+  border: none;
+  color: #64748b;
   font-size: 0.75rem;
-  letter-spacing: 0.5px;
-  color: #6c757d;
-  padding: 1rem 0.75rem;
-  border-bottom: 2px solid #dee2e6;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 12px 16px;
 }
 
 .leave-request-row {
-  transition: all 0.2s ease;
+  background: white;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.03) !important;
 }
 
 .leave-request-row:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+  background-color: #f8fafc !important;
 }
 
 .leave-request-row td {
-  padding: 1rem 0.75rem;
+  padding: 16px;
+  border: none !important;
   vertical-align: middle;
 }
 
-.leave-request-row.table-success {
-  background-color: rgba(25, 135, 84, 0.05);
+.leave-request-row td:first-child {
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
 }
 
-.leave-request-row.table-warning {
-  background-color: rgba(255, 193, 7, 0.1);
+.leave-request-row td:last-child {
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
 }
 
-.leave-request-row.table-danger {
-  background-color: rgba(220, 53, 69, 0.05);
+/* Intern Info & Avatar */
+.intern-info-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.intern-avatar-wrapper {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, var(--univen-navy) 0%, var(--univen-blue) 100%);
+  color: white;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.intern-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.intern-name {
+  font-weight: 700;
+  color: #1e293b;
+  font-size: 0.9rem;
+}
+
+.intern-email-sub {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+/* Status Badges - Modern Pill Style */
+.status-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 50px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.badge-approved {
+  background-color: #ecfdf5;
+  color: #059669;
+}
+
+.badge-pending {
+  background-color: #fffbeb;
+  color: #d97706;
+}
+
+.badge-declined {
+  background-color: #fef2f2;
+  color: #dc2626;
+}
+
+/* Modern Circular Action Buttons */
+.action-btn-group {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-circle-action {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.btn-success-subtle {
+  background-color: #dcfce7;
+  color: #16a34a;
+}
+
+.btn-success-subtle:hover {
+  background-color: #16a34a;
+  color: white;
+  transform: scale(1.1);
+}
+
+.btn-danger-subtle {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
+.btn-danger-subtle:hover {
+  background-color: #dc2626;
+  color: white;
+  transform: scale(1.1);
+}
+
+.btn-secondary-subtle {
+  background-color: #f1f5f9;
+  color: #475569;
+}
+
+.btn-secondary-subtle:hover {
+  background-color: #475569;
+  color: white;
+  transform: scale(1.1);
+}
+
+.smaller {
+  font-size: 0.75rem;
+}
+
+/* Modernized Mobile Card */
+.modernized-leave-card {
+  border-radius: 16px !important;
+  border: 1px solid #e2e8f0;
 }
 
 /* Mobile Card View */
@@ -1162,7 +1293,7 @@
   border: 2px solid #e0e0e0;
   background: #ffffff;
   color: #6c757d;
-  border-radius: 12px;
+  border-radius: 2px;
   transition: all 0.2s ease;
   min-height: 44px;
   -webkit-tap-highlight-color: transparent;
@@ -1204,7 +1335,7 @@
     padding: 0.5rem 0.75rem;
     font-size: 0.8rem;
     min-height: 42px;
-    border-radius: 10px;
+    border-radius: 2px;
   }
 
   .mobile-section-btn i {
@@ -1267,7 +1398,7 @@
     padding: 0.625rem 1rem;
     font-size: 0.85rem;
     font-weight: 500;
-    border-radius: 12px !important;
+    border-radius: 2px !important;
     min-height: 44px;
     display: inline-flex;
     align-items: center;
@@ -1317,7 +1448,7 @@
     padding: 0.5rem 0.75rem;
     font-size: 0.8rem;
     min-height: 42px;
-    border-radius: 10px !important;
+    border-radius: 2px !important;
   }
 
   .d-md-none .btn-group .btn i {
@@ -1434,22 +1565,7 @@
     height: 70px;
   }
 
-  /* Better sidebar proportions */
-  .sidebar {
-    width: 280px;
-  }
-
-  .sidebar.collapsed {
-    width: 80px;
-  }
-
-  .main-content {
-    margin-left: 280px;
-  }
-
-  .main-content.sidebar-collapsed {
-    margin-left: 80px;
-  }
+  /* Better sidebar proportions - Now handled by global variables */
 
   /* Enhanced navigation */
   .nav-link {
@@ -1500,14 +1616,7 @@
     max-width: 2000px;
   }
 
-  /* Larger sidebar for better proportions */
-  .sidebar {
-    width: 300px;
-  }
-
-  .main-content {
-    margin-left: 300px;
-  }
+  /* Larger sidebar for better proportions - Now handled by global variables */
 }
 
 /* Intern Signature in Reports */
@@ -1516,7 +1625,7 @@
   max-height: 40px;
   object-fit: contain;
   border: 1px solid #e0e0e0;
-  border-radius: 4px;
+  border-radius: 2px;
   padding: 2px;
   background: #fff;
   transition: transform 0.2s ease;
@@ -1529,3 +1638,120 @@
   z-index: 10;
   position: relative;
 }
+
+/* Premium Gold Badge for Sign-in Times */
+.badge-premium-gold {
+  background: linear-gradient(135deg, #d4af37 0%, #f1c40f 100%);
+  color: #021735;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 4px rgba(212, 175, 55, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+/* ===================== MODERN SUCCESS MODAL ===================== */
+.modern-success-modal .modal-content {
+  border: none;
+  border-radius: 24px !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.modern-success-modal .modal-header {
+  background: linear-gradient(135deg, #1e3a5f 0%, #64748b 100%) !important;
+  padding: 1.5rem 2rem;
+  border-bottom: none;
+}
+
+.modern-success-modal .modal-title {
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.modern-success-modal .modal-body {
+  padding: 2rem !important;
+}
+
+.modern-success-modal .bg-success-subtle {
+  background-color: #e7f1ff !important;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.modern-success-modal .text-navy {
+  color: #021735 !important;
+}
+
+.modern-success-modal .bg-light {
+  background-color: #f8fafc !important;
+  border: 1px solid #e2e8f0;
+}
+
+.modern-success-modal .form-control {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modern-success-modal .form-control:focus {
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.15);
+  transform: translateY(-1px);
+}
+
+.modern-success-modal .input-group {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.modern-success-modal .btn-navy {
+  background: linear-gradient(135deg, #1e3a5f 0%, #0d6efd 100%);
+  border: none;
+  border-radius: 12px !important;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: 0 4px 15px rgba(13, 110, 253, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modern-success-modal .btn-navy:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 25px rgba(13, 110, 253, 0.4);
+}
+
+.modern-success-modal .btn-success {
+  background: linear-gradient(135deg, #1e3a5f 0%, #0d6efd 100%);
+  border: none;
+  border-radius: 12px !important;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: 0 4px 15px rgba(13, 110, 253, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modern-success-modal .btn-success:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 25px rgba(13, 110, 253, 0.4);
+}
+
+.modern-success-modal .btn-success:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+.modern-success-modal .alert-warning {
+  background-color: #fff9eb !important;
+  border: 1px solid #ffecb5 !important;
+  border-radius: 16px !important;
+}
+
+.modern-success-modal .badge-password {
+  background: #ffffff !important;
+  color: #021735 !important;
+  border: 1px solid #e2e8f0 !important;
+  padding: 0.5rem 0.8rem !important;
+  font-size: 0.9rem !important;
+  letter-spacing: 0.05em;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+

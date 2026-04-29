@@ -1,5 +1,4 @@
 :root {
-  --utility-bar-height: 28px;
   /* University of Venda Brand Colors */
   --univen-navy: #1e3a5f;
   --univen-blue: #2c5282;
@@ -116,6 +115,43 @@
   --sidebar-dark: #021735;
   --sidebar-light: #26406e;
   --sidebar-gradient: linear-gradient(90deg, var(--sidebar-dark), var(--sidebar-light));
+
+  /* Sidebar Widths */
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 70px;
+}
+
+@media (min-width: 1920px) {
+  :root {
+    --sidebar-width: 280px;
+    --sidebar-collapsed-width: 80px;
+  }
+}
+
+@media (min-width: 2560px) {
+  :root {
+    --sidebar-width: 300px;
+  }
+
+  /* Glassmorphism Utilities */
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.7) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  }
+
+  .glass-card {
+    background: rgba(255, 255, 255, 0.8) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.4) !important;
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07) !important;
+  }
+}
+
+html {
+  font-size: 92% !important; /* Global compact scaling */
 }
 
 html,
@@ -123,23 +159,108 @@ body {
   background-color: whitesmoke !important;
   scroll-behavior: smooth !important;
   overflow-x: hidden !important;
+  overscroll-behavior-x: none !important;
 }
 
 .card {
-  border-radius: 20px !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
-  transition: all 0.3s ease !important;
+  border-radius: 16px !important;
+  border: 1px solid rgba(0, 0, 0, 0.05) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03) !important;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  background: #ffffff;
 }
 
 .card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1) !important;
-  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(30, 58, 95, 0.08) !important;
+  transform: translateY(-4px);
+}
+
+.card-body {
+  padding: 1rem !important; /* Compact padding */
+}
+
+.row.g-3, .row.g-4 {
+  --bs-gutter-y: 0.75rem !important; /* Tighter vertical spacing */
 }
 
 .table th,
 .table td {
   vertical-align: middle;
+}
+
+/* ===================== MODERN TABLE SYSTEM ===================== */
+.modern-table {
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  width: 100% !important;
+  margin-bottom: 0 !important;
+}
+
+.modern-table thead th {
+  background-color: #f8f9fa !important;
+  color: var(--univen-navy) !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  font-size: 0.65rem !important;
+  letter-spacing: 1px !important;
+  padding: 1rem 0.75rem !important;
+  border-top: none !important;
+  border-bottom: 2px solid rgba(30, 58, 95, 0.08) !important;
+}
+
+.modern-table tbody tr {
+  transition: all 0.2s ease !important;
+}
+
+.modern-table tbody tr:hover {
+  background-color: rgba(30, 58, 95, 0.02) !important;
+  transform: scale(1.001);
+  box-shadow: inset 4px 0 0 var(--univen-blue);
+}
+
+.modern-table td {
+  padding: 0.75rem !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04) !important;
+  color: #4a5568 !important;
+  font-size: 0.825rem !important;
+}
+
+/* Modern Status Badges */
+.status-badge {
+  padding: 0.45rem 1rem !important;
+  font-weight: 700 !important;
+  font-size: 0.65rem !important;
+  border-radius: 50px !important;
+  letter-spacing: 0.8px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.4rem !important;
+  text-transform: uppercase !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.status-badge-success {
+  background-color: #e6fffa !important;
+  color: #2c7a7b !important;
+  border: 1px solid rgba(44, 122, 123, 0.2) !important;
+}
+
+.status-badge-info {
+  background-color: #ebf8ff !important;
+  color: #2b6cb0 !important;
+  border: 1px solid rgba(43, 108, 176, 0.2) !important;
+}
+
+.status-badge-warning {
+  background-color: #fffaf0 !important;
+  color: #9c4221 !important;
+  border: 1px solid rgba(156, 66, 33, 0.2) !important;
+}
+
+.status-badge-secondary {
+  background-color: #f7fafc !important;
+  color: #4a5568 !important;
+  border: 1px solid rgba(74, 85, 104, 0.2) !important;
 }
 
 /* ===================== GLOBAL FORM STYLES (LOGIN THEME) ===================== */
@@ -277,55 +398,13 @@ th {
   border: 0 !important;
 }
 
-/* ===================== GLOBAL USER FULLNAME GLOW ===================== */
+/* ===================== GLOBAL USER FULLNAME (CLEAN) ===================== */
 .user-fullname {
-  /* Dynamic Glow Variables */
-  --glow-color: rgba(44, 82, 130, 0.3);
-  --glow-color-bright: rgba(44, 82, 130, 0.6);
-  --border-color: var(--univen-blue);
-  --border-color-bright: #3182ce;
-
-  /* Make the username distinctly stand out */
-  background: #ffffff;
-  border: 2px solid var(--border-color) !important;
-  padding: 6px 16px;
-  border-radius: 50px;
   color: var(--univen-navy);
-  font-weight: 800;
-  font-size: 1.05rem;
-  letter-spacing: 0.5px;
+  font-weight: 700;
   white-space: nowrap;
-  box-shadow: 0 0 10px var(--glow-color);
-  display: flex;
-  align-items: center;
-  animation: glow-pulse 3s infinite ease-in-out;
   transition: all 0.3s ease;
   text-decoration: none !important;
-}
-
-.user-fullname.settings-active {
-  --glow-color: rgba(212, 175, 55, 0.3);
-  --glow-color-bright: rgba(212, 175, 55, 0.6);
-  --border-color: var(--univen-gold);
-  --border-color-bright: var(--univen-gold-bright);
-}
-
-@keyframes glow-pulse {
-  0% {
-    box-shadow: 0 0 8px var(--glow-color);
-    border-color: var(--border-color) !important;
-  }
-
-  50% {
-    box-shadow: 0 0 15px var(--glow-color-bright);
-    border-color: var(--border-color-bright) !important;
-    transform: scale(1.02);
-  }
-
-  100% {
-    box-shadow: 0 0 8px var(--glow-color);
-    border-color: var(--border-color) !important;
-  }
 }
 
 /* ===================== SWEETALERT2 CUSTOM THEME ===================== */
@@ -643,60 +722,189 @@ div:where(.swal2-container.swal2-center>.swal2-popup) {
     font-size: 0.75rem;
   }
 }
-/* ===================== TOP UTILITY BAR ===================== */
-.top-utility-bar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--utility-bar-height);
-  background: var(--univen-dark-navy);
-  z-index: 1045;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0 1.5rem;
-  gap: 1.5rem;
-  font-size: 0.72rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+
+/* ===================== COMPACT MAIN CONTENT OPTIMIZATION ===================== */
+/* Scales down oversized text, cards, and tables strictly in the main view area */
+.main-content {
+  font-size: 0.85rem !important; 
 }
 
-.utility-link {
-  color: rgba(255, 255, 255, 0.8) !important;
-  text-decoration: none !important;
-  font-weight: 500;
-  transition: all 0.2s ease;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
+/* Scale down headings */
+.main-content h1, .main-content .fs-1 { font-size: 1.75rem !important; }
+.main-content h2, .main-content .fs-2 { font-size: 1.5rem !important; }
+.main-content h3, .main-content .fs-3 { font-size: 1.25rem !important; }
+.main-content h4, .main-content .fs-4 { font-size: 1.1rem !important; }
+.main-content h5, .main-content .fs-5 { font-size: 1rem !important; font-weight: 600; }
+.main-content h6, .main-content .fs-6 { font-size: 0.85rem !important; }
+.main-content .stat-value { font-size: 1.5rem !important; }
+
+/* Shrink heavy paddings on cards & containers */
+.main-content .p-5 { padding: 1.5rem !important; }
+.main-content .p-4 { padding: 1rem !important; }
+.main-content .p-3 { padding: 0.85rem !important; }
+.main-content .py-5 { padding-top: 1.5rem !important; padding-bottom: 1.5rem !important; }
+.main-content .py-4 { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+.main-content .py-3 { padding-top: 0.85rem !important; padding-bottom: 0.85rem !important; }
+.main-content .px-4 { padding-left: 1rem !important; padding-right: 1rem !important; }
+.main-content .mb-5 { margin-bottom: 1.5rem !important; }
+.main-content .mb-4 { margin-bottom: 1rem !important; }
+.main-content .mb-3 { margin-bottom: 0.85rem !important; }
+
+/* Shrink Table Proportions */
+.main-content .table td, .main-content .modern-table td {
+  padding: 0.6rem 0.85rem !important;
+  font-size: 0.8rem !important;
 }
 
-.utility-link:hover {
-  color: var(--univen-gold-bright) !important;
+.main-content .table th, .main-content .modern-table thead th {
+  padding: 0.75rem 0.85rem !important;
+  font-size: 0.7rem !important;
 }
 
-.utility-divider {
-  width: 1px;
-  height: 12px;
-  background: rgba(255, 255, 255, 0.2);
+/* UI Elements scaling */
+.main-content .btn:not(.btn-sm):not(.btn-lg) {
+  padding: 0.4rem 1rem !important;
+  font-size: 0.8rem !important;
 }
 
-/* Adjust navbar to sit below utility bar */
-.navbar.fixed-top {
-  top: var(--utility-bar-height) !important;
+.main-content .badge {
+  padding: 0.35rem 0.65rem !important;
+  font-size: 0.7rem !important;
 }
 
-/* Adjust main content padding to account for utility bar + navbar */
-body {
-  padding-top: calc(var(--utility-bar-height) + 60px) !important;
+.main-content .user-avatar {
+  width: 45px !important;
+  height: 45px !important;
 }
 
-@media (max-width: 991.98px) {
-  .top-utility-bar {
-    padding: 0 1rem;
-    gap: 1rem;
-    justify-content: center;
-    font-size: 0.65rem;
+.main-content .fs-1.bi, .main-content i.fs-1 { font-size: 1.5rem !important; }
+
+/* Premium Aesthetic Refinements */
+.main-content .card-header {
+  background: rgba(255, 255, 255, 0.7) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+}
+
+.main-content .card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border: 1px solid rgba(0, 0, 0, 0.05) !important;
+}
+
+.main-content .card:hover {
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08) !important;
+}
+
+.main-content .overview-stat-card {
+  border-radius: 12px !important;
+}
+
+.main-content .modern-table thead th {
+  background-color: #f8f9fa !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6c757d;
+}
+
+/* ===================== RESPONSIVE OPTIMIZATIONS FOR SMARTPHONES (<576px) ===================== */
+@media (max-width: 576px) {
+
+  /* Ensure SweetAlert modals fit within small screens */
+  div:where(.swal2-container) div:where(.swal2-popup) {
+    width: 90% !important;
+    padding: 1rem !important;
+  }
+
+  /* Make sure global cards don't have excessive padding */
+  .card {
+    border-radius: 16px !important;
+  }
+
+  /* Adjust global buttons */
+  .btn-primary,
+  .btn-navy,
+  .btn-gold,
+  .btn-outline-navy,
+  .btn-outline-gold {
+    padding: 0.5rem 1rem !important;
+    font-size: 0.85rem !important;
+  }
+
+  /* Status Badges */
+  .status-badge {
+    padding: 0.3rem 0.6rem !important;
+    font-size: 0.65rem !important;
+  }
+
+  /* Small form controls */
+  .form-control,
+  .form-select {
+    font-size: 0.8rem !important;
+    padding: 0.4rem 0.6rem !important;
+  }
+
+  /* Fix overflowing long usernames */
+  .user-fullname {
+    padding: 4px 12px;
+    font-size: 0.85rem;
+  }
+
+  /* Ensure canvas for signatures scales down gracefully */
+  canvas {
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 150px;
+  }
+
+  /* Make tables more compact on small screens */
+  .table {
+    font-size: 0.75rem !important;
+  }
+
+  .table td,
+  .table th {
+    padding: 0.4rem !important;
+  }
+
+  /* Improve mobile section bar rendering */
+  .mobile-section-btn {
+    padding: 0.4rem 0.6rem !important;
+    font-size: 0.75rem !important;
+    border-radius: 0.5rem !important;
+  }
+}
+
+/* ===================== NAVIGATION ALERT INDICATORS ===================== */
+.nav-link {
+  position: relative;
+}
+
+.nav-indicator-pulse {
+  position: absolute;
+  top: 12px;
+  left: 28px; /* Adjusted to be near the icon */
+  width: 8px;
+  height: 8px;
+  background-color: #ff4757;
+  border-radius: 50%;
+  box-shadow: 0 0 0 rgba(255, 71, 87, 0.4);
+  animation: pulse-red 2s infinite;
+  z-index: 5;
+  border: 1.5px solid var(--univen-navy); /* Match sidebar background */
+}
+
+@keyframes pulse-red {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(255, 71, 87, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(255, 71, 87, 0);
   }
 }

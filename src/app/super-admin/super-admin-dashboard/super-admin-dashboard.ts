@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+﻿import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
@@ -12,6 +12,10 @@ import { Profile } from '../../profile/profile';
 import { LoadingComponent } from '../../shared/components/loading/loading.component';
 import { LogHistoryComponent } from '../../shared/components/log-history/log-history.component';
 import { ProfileTabService } from '../../services/profile-tab.service';
+import { HelpService, HelpSettings } from '../../services/help.service';
+import { PolicyService, SystemPolicy } from '../../services/policy.service';
+import { ActivityLogService } from '../../services/activity-log.service';
+import { WebSocketService, WebSocketMessage } from '../../services/websocket.service';
 import { Subscription } from 'rxjs';
 import Swal from 'sweetalert2';
 import type { SweetAlertResult } from 'sweetalert2';
@@ -72,6 +76,7 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
   inviteLink: string = '';
   inviteMessage: string = '';
   adminPassword: string = ''; // Store password temporarily for the message
+  lastInvitedEmail: string = ''; // Track which email the password belongs to
 
   // Filters
   adminSearch: string = '';
@@ -115,6 +120,21 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
   showEditPassword: boolean = false;
   showEditConfirmPassword: boolean = false;
 
+  // Help Widget Settings
+  helpSettings: HelpSettings = {
+    about: '',
+    phone: '',
+    email: '',
+    location: '',
+    website: '',
+    triggerText: ''
+  };
+  isSavingHelpSettings: boolean = false;
+
+  // System Policy Settings
+  policyContent: string = '';
+  isSavingPolicy: boolean = false;
+
   adminForm: AdminForm = {
     name: '',
     surname: '',
@@ -125,12 +145,17 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
     signature: ''
   };
 
-  navigationItems = [
+  hasSystemErrors: boolean = false;
+  navigationItems: any[] = [];
+  
+  private baseNavigationItems = [
     { id: 'overview', label: 'Overview', icon: 'bi bi-speedometer2' },
     { id: 'admins', label: 'Manage Admins', icon: 'bi bi-people-fill' },
     { id: 'departments', label: 'Departments', icon: 'bi bi-building' },
-    { id: 'logs', label: 'Log History', icon: 'bi bi-journal-text' }
+    { id: 'logs', label: 'Activity Log', icon: 'bi bi-activity' }
   ];
+
+  activeSettingTab: 'system' | 'profile' | 'policy' = 'system';
 
   constructor(
     private router: Router,
@@ -142,16 +167,21 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
     private dataPreloadService: DataPreloadService,
     private sidebarService: SidebarService,
     private profileTabService: ProfileTabService,
+    private helpService: HelpService,
+    private policyService: PolicyService,
+    private logService: ActivityLogService,
+    private webSocketService: WebSocketService,
     private cdr: ChangeDetectorRef
   ) { }
 
   ngOnInit(): void {
+    this.checkSystemErrors();
     this.updateCurrentDate();
     this.loadAdminProfile();
 
     // Subscribe to sidebar state
     this.subscriptions.add(
-      this.sidebarService.isSidebarExpanded$.subscribe(expanded => {
+      this.sidebarService.isSidebarExpanded$.subscribe((expanded: boolean) => {
         this.isSidebarExpanded = expanded;
         this.cdr.detectChanges();
       })
@@ -159,7 +189,7 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
 
     // Subscribe to profile active state
     this.subscriptions.add(
-      this.profileTabService.isProfileActive$.subscribe(active => {
+      this.profileTabService.isProfileActive$.subscribe((active: boolean) => {
         this.isProfileActive = active;
         this.cdr.detectChanges();
       })
@@ -174,25 +204,34 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
     const cachedDepartments = this.dataPreloadService.getCachedData<any[]>('departments');
 
     if (cachedAdmins && cachedAdmins.length > 0) {
-      console.log('✅ Using preloaded admins data');
+      console.log('âœ… Using preloaded admins data');
       this.admins = cachedAdmins;
     } else {
-      console.log('⚠️ No cached admins data, fetching...');
+      console.log('âš ï¸ No cached admins data, fetching...');
       this.loadAdmins();
     }
 
     if (cachedDepartments && cachedDepartments.length > 0) {
-      console.log('✅ Using preloaded departments data');
+      console.log('âœ… Using preloaded departments data');
       this.departments = cachedDepartments;
     } else {
-      console.log('⚠️ No cached departments data, fetching...');
+      console.log('âš ï¸ No cached departments data, fetching...');
       this.loadDepartments();
     }
 
     // Check for query parameter to show specific section
     this.route.queryParams.subscribe(params => {
-      if (params['section']) {
-        this.showSection(params['section']);
+      const section = params['section'];
+      if (section) {
+        this.showSection(section);
+        // Clear query parameters after applying to prevent persistence on manual refresh
+        // We use replaceUrl: true to avoid adding to history
+        this.router.navigate([], {
+          relativeTo: this.route,
+          queryParams: { section: null },
+          queryParamsHandling: 'merge',
+          replaceUrl: true
+        });
       }
     });
 
@@ -202,12 +241,17 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
     // Subscribe to real-time updates
     this.subscribeToRealTimeUpdates();
 
+    // Initial error check
+    // Moved up to ensure checkSystemErrors populates navigationItems before UI renders
+
+
     // Disable loading screen after 1.5 seconds
     setTimeout(() => {
       this.isLoading = false;
       this.cdr.detectChanges();
     }, 1500);
   }
+
 
   /**
    * Subscribe to real-time updates via WebSocket
@@ -219,7 +263,7 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
         if (updatedAdmins && Array.isArray(updatedAdmins)) {
           this.admins = updatedAdmins;
           this.cdr.detectChanges();
-          console.log('🔄 Admins updated in real-time');
+          console.log('ðŸ”„ Admins updated in real-time');
         }
       })
     );
@@ -230,10 +274,37 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
         if (updatedDepartments && Array.isArray(updatedDepartments)) {
           this.departments = updatedDepartments;
           this.cdr.detectChanges();
-          console.log('🔄 Departments updated in real-time');
+          console.log('ðŸ”„ Departments updated in real-time');
         }
       })
     );
+
+    // Subscribe to real-time log updates for error detection
+    this.subscriptions.add(
+      this.webSocketService.logUpdates$.subscribe((message: WebSocketMessage) => {
+        if (message.type === 'ACTIVITY_LOG_CREATED') {
+          const log = message.data;
+          if (this.logService.isErrorLog(log)) {
+            this.hasSystemErrors = true;
+            this.updateNavigationItems();
+            console.log('ðŸš¨ System error detected in real-time. Showing Log History.');
+          }
+        }
+      })
+    );
+  }
+
+  private checkSystemErrors(): void {
+    this.logService.hasRecentErrors().subscribe((hasErrors: boolean) => {
+      this.hasSystemErrors = hasErrors;
+      this.updateNavigationItems();
+    });
+  }
+
+
+  private updateNavigationItems(): void {
+    this.navigationItems = [...this.baseNavigationItems];
+    this.cdr.detectChanges();
   }
 
   updateCurrentDate(): void {
@@ -274,27 +345,27 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
     this.loading = true;
     this.api.get<Admin[]>('super-admin/admins').subscribe({
       next: (admins) => {
-        // ✅ Map admins to include lastLogin and preserve departmentId/departmentName from backend
+        // âœ… Map admins to include lastLogin and preserve departmentId/departmentName from backend
         this.admins = admins.map(a => {
           const lastLoginValue = (a as any).lastLoginAt || (a as any).lastLogin || (a as any).last_login || (a as any).lastLoginDate || null;
           // Debug logging for lastLogin mapping
           if (lastLoginValue) {
-            console.log(`✅ Admin ${a.name} (${a.email}) has lastLogin:`, lastLoginValue);
+            console.log(`âœ… Admin ${a.name} (${a.email}) has lastLogin:`, lastLoginValue);
           } else {
-            console.log(`⚠️ Admin ${a.name} (${a.email}) has NO lastLogin (will appear in "Not Logged In" table)`);
+            console.log(`âš ï¸ Admin ${a.name} (${a.email}) has NO lastLogin (will appear in "Not Logged In" table)`);
           }
           return {
             ...a,
             // Check for lastLoginAt (backend field) first, then fallback to other possible field names
             lastLogin: lastLoginValue,
-            // ✅ Preserve departmentId and departmentName from backend response
+            // âœ… Preserve departmentId and departmentName from backend response
             departmentId: (a as any).departmentId || (a as any).department_id || a.departmentId,
             departmentName: (a as any).departmentName || (a as any).department_name || a.departmentName
           };
         });
 
-        // ✅ Log department info for debugging
-        console.log('✅ Admins loaded with department info:', this.admins.map(a => ({
+        // âœ… Log department info for debugging
+        console.log('âœ… Admins loaded with department info:', this.admins.map(a => ({
           name: a.name,
           email: a.email,
           departmentId: a.departmentId,
@@ -349,7 +420,84 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
     }
 
     // Ensure we stay on the dashboard and update the view
+    if (section === 'settings') {
+      this.loadHelpSettings();
+      this.loadPolicy();
+    }
     this.cdr.detectChanges();
+  }
+
+  loadHelpSettings(): void {
+    this.subscriptions.add(
+      this.helpService.helpSettings$.subscribe((settings: HelpSettings) => {
+        this.helpSettings = { ...settings };
+        this.cdr.detectChanges();
+      })
+    );
+  }
+
+  saveHelpSettings(): void {
+    this.isSavingHelpSettings = true;
+    this.helpService.updateSettings(this.helpSettings).subscribe({
+      next: () => {
+        this.isSavingHelpSettings = false;
+        Swal.fire({
+          icon: 'success',
+          title: 'Settings Saved',
+          text: 'Help Widget information has been updated successfully.',
+          timer: 2000,
+          showConfirmButton: false
+        });
+        this.cdr.detectChanges();
+      },
+      error: (err: any) => {
+        this.isSavingHelpSettings = false;
+        Swal.fire({
+          icon: 'error',
+          title: 'Save Failed',
+          text: 'Failed to update Help Widget settings. Please try again.'
+        });
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  loadPolicy(): void {
+    this.subscriptions.add(
+      this.policyService.policy$.subscribe((policy: SystemPolicy) => {
+        this.policyContent = policy.content;
+        this.cdr.detectChanges();
+      })
+    );
+  }
+
+  savePolicy(): void {
+    this.isSavingPolicy = true;
+    const currentPolicy = this.policyService.currentPolicy || { title: 'PrivacyPolicy' };
+    const updatedPolicy = { ...currentPolicy, content: this.policyContent };
+
+    this.policyService.updatePolicy(updatedPolicy).subscribe({
+      next: () => {
+        this.isSavingPolicy = false;
+        Swal.fire({
+          icon: 'success',
+          title: 'Policy Saved',
+          text: 'System Policy has been updated successfully.',
+          timer: 2000,
+          showConfirmButton: false
+        });
+        this.cdr.detectChanges();
+      },
+      error: (err: any) => {
+        this.isSavingPolicy = false;
+        Swal.fire({
+          icon: 'error',
+          title: 'Save Failed',
+          text: 'Failed to update system policy. Please try again.'
+        });
+        this.cdr.detectChanges();
+      }
+    });
   }
 
   // Start auto-refresh for admins
@@ -400,12 +548,12 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
   }
 
   openCreateAdminForm(): void {
-    // ✅ Always reload departments to ensure we have the latest data
-    console.log('📋 Opening create admin form. Current departments count:', this.departments.length);
+    // âœ… Always reload departments to ensure we have the latest data
+    console.log('ðŸ“‹ Opening create admin form. Current departments count:', this.departments.length);
 
     // Load departments if not loaded or reload to get latest
     if (this.departments.length === 0 || this.isLoadingDepartments === false) {
-      console.log('🔄 Loading departments from backend...');
+      console.log('ðŸ”„ Loading departments from backend...');
       this.isLoadingDepartments = true;
       this.loadDepartments();
     }
@@ -439,9 +587,9 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
         return;
       }
 
-      // ✅ Log available departments for debugging
-      console.log('✅ Departments loaded. Available departments:', this.activeDepartments.length);
-      console.log('✅ Active departments:', this.activeDepartments.map(d => ({ id: d.id, name: d.name })));
+      // âœ… Log available departments for debugging
+      console.log('âœ… Departments loaded. Available departments:', this.activeDepartments.length);
+      console.log('âœ… Active departments:', this.activeDepartments.map(d => ({ id: d.id, name: d.name })));
 
       // Initialize form
       this.adminForm = {
@@ -484,6 +632,35 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
 
   toggleConfirmPasswordVisibility(): void {
     this.showConfirmPassword = !this.showConfirmPassword;
+  }
+
+  generatePassword(isEdit: boolean = false): void {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+    let pass = '';
+    // Ensure all required character types are present
+    pass += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)];
+    pass += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)];
+    pass += '0123456789'[Math.floor(Math.random() * 10)];
+    pass += '!@#$%^&*'[Math.floor(Math.random() * 8)];
+
+    for (let i = 4; i < 12; i++) {
+      pass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    pass = pass.split('').sort(() => 0.5 - Math.random()).join('');
+
+    if (isEdit) {
+      if (!this.editDepartmentForm) this.editDepartmentForm = {} as any;
+      this.editDepartmentForm.password = pass;
+      this.editDepartmentForm.confirmPassword = pass;
+      this.showEditPassword = true;
+      this.showEditConfirmPassword = true;
+    } else {
+      this.adminForm.password = pass;
+      this.adminForm.confirmPassword = pass;
+      this.showPassword = true;
+      this.showConfirmPassword = true;
+    }
   }
 
   private lastEmailValue: string = '';
@@ -537,7 +714,7 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
       return;
     }
 
-    // ✅ Validate department is selected (REQUIRED)
+    // âœ… Validate department is selected (REQUIRED)
     if (!this.adminForm.departmentId || this.adminForm.departmentId === undefined || this.adminForm.departmentId === null) {
       Swal.fire({
         icon: 'warning',
@@ -578,7 +755,7 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
 
     this.loading = true;
 
-    // ✅ CRITICAL: Always include departmentId - it's required for admin to inherit department
+    // âœ… CRITICAL: Always include departmentId - it's required for admin to inherit department
     // Ensure it's a number, not a string or undefined
     let departmentId: number;
 
@@ -605,17 +782,20 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
       return;
     }
 
+    // âœ… Combine name and surname for backend storage
+
+
     const adminData: any = {
-      name: this.adminForm.name,
-      surname: this.adminForm.surname,
+      name: this.adminForm.name.trim(),
+      surname: this.adminForm.surname.trim(),
       email: this.adminForm.email,
       password: this.adminForm.password,
-      departmentId: departmentId  // ✅ Required - admin inherits this department (ensured to be number)
+      departmentId: departmentId  // âœ… Required - admin inherits this department (ensured to be number)
     };
 
     // Log department assignment for debugging
     const selectedDept = this.departments.find(d => d.id === this.adminForm.departmentId);
-    console.log('✅ Creating admin with department assignment:', {
+    console.log('âœ… Creating admin with department assignment:', {
       adminName: this.adminForm.name,
       adminSurname: this.adminForm.surname,
       adminEmail: this.adminForm.email,
@@ -627,23 +807,17 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
       adminData.signature = this.adminForm.signature;
     }
 
-    console.log('📤 Sending admin creation request to backend:', {
-      name: adminData.name,
-      surname: adminData.surname,
-      email: adminData.email,
-      departmentId: adminData.departmentId,
-      hasSignature: !!adminData.signature
-    });
+    console.log('ðŸ“¤ Sending admin creation request to backend:', adminData);
 
     this.api.post<any>('super-admin/admins', adminData).subscribe({
       next: (response) => {
-        console.log('✅ Backend response:', response);
+        console.log('âœ… Backend response:', response);
 
-        // ✅ CRITICAL: Verify backend saved the department
+        // âœ… CRITICAL: Verify backend saved the department
         if (!response.departmentId && this.adminForm.departmentId) {
-          console.error('❌ CRITICAL ERROR: Backend did not save departmentId!');
-          console.error('❌ Request sent departmentId:', this.adminForm.departmentId);
-          console.error('❌ Response received departmentId:', response.departmentId);
+          console.error('âŒ CRITICAL ERROR: Backend did not save departmentId!');
+          console.error('âŒ Request sent departmentId:', this.adminForm.departmentId);
+          console.error('âŒ Response received departmentId:', response.departmentId);
           Swal.fire({
             icon: 'error',
             title: 'Department Not Saved',
@@ -656,7 +830,7 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
             timer: 8000
           });
         } else if (response.departmentId) {
-          console.log('✅ Department successfully saved by backend:', {
+          console.log('âœ… Department successfully saved by backend:', {
             departmentId: response.departmentId,
             departmentName: response.departmentName
           });
@@ -672,12 +846,13 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
           createdAt: response.createdAt,
           hasSignature: response.hasSignature || false,
           active: response.active !== false,
-          departmentId: response.departmentId || this.adminForm.departmentId, // ✅ Fallback to form value
-          departmentName: response.departmentName || selectedDept?.name // ✅ Fallback to form value
+          departmentId: response.departmentId || this.adminForm.departmentId, // âœ… Fallback to form value
+          departmentName: response.departmentName || selectedDept?.name // âœ… Fallback to form value
         };
 
         // Store password temporarily for the invite message
         this.adminPassword = this.adminForm.password;
+        this.lastInvitedEmail = this.adminForm.email;
 
         // Generate invite link (pointing to login page)
         this.generateInviteLink(response);
@@ -853,28 +1028,28 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
 
   /**
    * Open edit department modal for an admin
-   * ✅ Fetches department from backend (departmentId or departmentName)
+   * âœ… Fetches department from backend (departmentId or departmentName)
    */
   openEditDepartmentModal(admin: Admin): void {
     this.editingAdmin = admin;
 
-    // ✅ Get departmentId from admin object (from backend)
+    // âœ… Get departmentId from admin object (from backend)
     let departmentId: number | undefined = admin.departmentId;
 
-    // ✅ If departmentId is missing but departmentName exists, find it from departments list
+    // âœ… If departmentId is missing but departmentName exists, find it from departments list
     if (!departmentId && admin.departmentName && this.departments.length > 0) {
       const foundDept = this.departments.find(dept => dept.name === admin.departmentName);
       if (foundDept) {
         departmentId = foundDept.id;
-        console.log('✅ Found departmentId from departmentName:', {
+        console.log('âœ… Found departmentId from departmentName:', {
           departmentName: admin.departmentName,
           departmentId: departmentId
         });
       }
     }
 
-    // ✅ Log for debugging
-    console.log('✅ Opening edit modal for admin:', {
+    // âœ… Log for debugging
+    console.log('âœ… Opening edit modal for admin:', {
       adminId: admin.adminId,
       name: admin.name,
       email: admin.email,
@@ -883,19 +1058,33 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
       availableDepartments: this.departments.length
     });
 
+    // âœ… Populate form fields - ensures surname and department are pre-filled
     this.editDepartmentForm = {
       name: admin.name || '',
       surname: admin.surname || '',
       email: admin.email || '',
       password: '',
       confirmPassword: '',
-      departmentId: departmentId || null // ✅ Set departmentId from backend (null if not set)
+      departmentId: departmentId || null // âœ… Set departmentId from backend (null if not set)
     };
+
+    // âœ… Robust surname check: If surname is empty but name has two words, split it
+    if (!this.editDepartmentForm.surname && this.editDepartmentForm.name.includes(' ')) {
+      const nameParts = this.editDepartmentForm.name.trim().split(/\s+/);
+      if (nameParts.length > 1) {
+        this.editDepartmentForm.name = nameParts[0];
+        this.editDepartmentForm.surname = nameParts.slice(1).join(' ');
+        console.log('ðŸ’¡ Auto-split name into name and surname:', {
+          name: this.editDepartmentForm.name,
+          surname: this.editDepartmentForm.surname
+        });
+      }
+    }
     this.showEditPassword = false;
     this.showEditConfirmPassword = false;
     this.showEditDepartmentModal = true;
 
-    // ✅ Trigger change detection to ensure selector shows correct value
+    // âœ… Trigger change detection to ensure selector shows correct value
     setTimeout(() => {
       this.cdr.detectChanges();
     }, 0);
@@ -964,7 +1153,15 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
       }, 0);
     }
 
-    this.lastEditAdminEmailValue = currentValue;
+  this.lastEditAdminEmailValue = currentValue;
+  }
+
+  onDepartmentChange(event: any): void {
+    console.log('ðŸ” Department selection changed:', {
+      newValue: this.editDepartmentForm.departmentId,
+      eventValue: event.target.value,
+      isAutoSaveTriggered: false // We use this to see if any other logic triggers a save
+    });
   }
 
   /**
@@ -1047,7 +1244,7 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
       updateData.password = this.editDepartmentForm.password.trim();
     }
 
-    // ✅ If departmentId is undefined or null, send null to remove department
+    // âœ… If departmentId is undefined or null, send null to remove department
     // If it's a number, send it to set the department
     if (this.editDepartmentForm.departmentId === undefined || this.editDepartmentForm.departmentId === null) {
       updateData.departmentId = null;
@@ -1055,47 +1252,48 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
       updateData.departmentId = this.editDepartmentForm.departmentId;
     }
 
-    console.log('✅ Updating admin with department:', {
-      adminId: this.editingAdmin?.adminId,
-      departmentId: updateData.departmentId,
-      previousDepartmentId: this.editingAdmin?.departmentId
+    // âœ… Trace logging for debugging
+    console.log('ðŸ”„ Attempting to update admin:', {
+      adminId: this.editingAdmin.adminId,
+      updateData: updateData,
+      currentFormValue: this.editDepartmentForm.departmentId
     });
 
+    this.loading = true;
     this.api.put<any>(`super-admin/admins/${this.editingAdmin.adminId}`, updateData).subscribe({
       next: (response) => {
-        this.loading = false;
+        console.log('âœ… Admin update response from backend:', response);
 
-        // Update the admin in the local array
         const index = this.admins.findIndex(a => a.adminId === this.editingAdmin!.adminId);
         if (index !== -1) {
-          this.admins[index] = {
+          // âœ… Robust mapping of response data back to the local array
+          const updatedAdmin = {
             ...this.admins[index],
             name: response.name || this.editDepartmentForm.name,
-            surname: response.surname || this.editDepartmentForm.surname,
             email: response.email || this.editDepartmentForm.email,
-            departmentId: response.departmentId || undefined,
-            departmentName: response.departmentName || undefined
+            departmentId: response.departmentId !== undefined ? response.departmentId : this.admins[index].departmentId,
+            departmentName: response.departmentName || (response.departmentId === null ? 'No Department' : this.admins[index].departmentName)
           };
+
+          this.admins[index] = updatedAdmin;
+          console.log('âœ… Local admin record updated:', updatedAdmin);
         }
 
-        // Update cache if needed
-        this.dataPreloadService.setCachedData('admins', this.admins);
-
+        this.loading = false;
+        this.closeEditDepartmentModal();
         Swal.fire({
           icon: 'success',
           title: 'Success!',
-          text: `Admin details updated successfully for ${this.editDepartmentForm.name}.`,
+          text: 'Admin details updated successfully.',
           timer: 2000,
           showConfirmButton: false
         });
-
-        this.closeEditDepartmentModal();
         this.cdr.detectChanges();
       },
       error: (error) => {
+        console.error('âŒ Error updating admin:', error);
         this.loading = false;
-        console.error('Error updating admin details:', error);
-        const errorMessage = error?.error?.message || error?.message || 'Failed to update admin details. Please try again.';
+        const errorMessage = error?.error?.message || error?.message || 'Failed to update admin. Please try again.';
         Swal.fire({
           icon: 'error',
           title: 'Error',
@@ -1127,12 +1325,12 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
    */
   loadDepartments(): void {
     this.isLoadingDepartments = true;
-    console.log('🔄 Fetching departments from API: GET /api/departments');
+    console.log('ðŸ”„ Fetching departments from API: GET /api/departments');
 
     this.departmentApiService.getAllDepartments().subscribe({
       next: (departments) => {
-        console.log('✅ Departments loaded successfully:', departments.length);
-        console.log('📋 Departments data:', departments.map(d => ({ id: d.id, name: d.name, active: d.active })));
+        console.log('âœ… Departments loaded successfully:', departments.length);
+        console.log('ðŸ“‹ Departments data:', departments.map(d => ({ id: d.id, name: d.name, active: d.active })));
 
         this.departments = departments;
         // Update cache
@@ -1141,8 +1339,8 @@ export class SuperAdminDashboard implements OnInit, OnDestroy {
         this.cdr.detectChanges();
       },
       error: (error) => {
-        console.error('❌ Error loading departments:', error);
-        console.error('❌ Error details:', {
+        console.error('âŒ Error loading departments:', error);
+        console.error('âŒ Error details:', {
           status: error.status,
           statusText: error.statusText,
           message: error.message,
@@ -1551,7 +1749,7 @@ Super Admin`;
     this.newlyCreatedAdmin = null;
     this.inviteLink = '';
     this.inviteMessage = '';
-    this.adminPassword = '';
+    // password is kept in adminPassword/lastInvitedEmail for resend functionality
   }
 
   // ===================== ADMIN FILTERING & PAGINATION =====================
@@ -1571,13 +1769,13 @@ Super Admin`;
 
         // Debug logging
         if (hasLoggedIn) {
-          console.log(`🔍 Admin ${a.name} (${a.email}) has logged in (lastLogin: ${a.lastLogin}) - EXCLUDED from "Not Logged In" table`);
+          console.log(`ðŸ” Admin ${a.name} (${a.email}) has logged in (lastLogin: ${a.lastLogin}) - EXCLUDED from "Not Logged In" table`);
         }
 
         // Only include admins who haven't logged in AND are active
         const shouldInclude = !hasLoggedIn && a.active !== false;
         if (shouldInclude) {
-          console.log(`🔍 Admin ${a.name} (${a.email}) has NOT logged in - INCLUDED in "Not Logged In" table`);
+          console.log(`ðŸ” Admin ${a.name} (${a.email}) has NOT logged in - INCLUDED in "Not Logged In" table`);
         }
         return shouldInclude;
       })
@@ -1591,7 +1789,7 @@ Super Admin`;
         return a.name.localeCompare(b.name);
       });
 
-    console.log(`📊 Filtered ${filtered.length} admins who haven't logged in (out of ${this.admins.length} total admins)`);
+    console.log(`ðŸ“Š Filtered ${filtered.length} admins who haven't logged in (out of ${this.admins.length} total admins)`);
     return filtered;
   }
 
@@ -1889,8 +2087,10 @@ Super Admin`;
       lastLogin: admin.lastLogin
     };
 
-    // Clear password since we don't have it for existing admins
-    this.adminPassword = '';
+    // Restore password only if it belongs to this admin
+    if (this.lastInvitedEmail !== admin.email) {
+      this.adminPassword = '';
+    }
 
     // Generate invite link
     this.generateInviteLink(this.newlyCreatedAdmin);

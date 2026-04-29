@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, AbstractControl, ValidationErrors } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { RouterLink, Router, ActivatedRoute } from '@angular/router';
@@ -26,7 +26,8 @@ export class ResetPassword implements OnInit, OnDestroy {
     private fb: FormBuilder,
     private api: ApiService,
     private router: Router,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    private cdr: ChangeDetectorRef
   ) {
     this.resetPasswordForm = this.fb.group({
       email: ['', [Validators.required, Validators.email, Validators.pattern(/^[a-zA-Z0-9._%+-]+@univen\.ac\.za$/)]],
@@ -66,9 +67,11 @@ export class ResetPassword implements OnInit, OnDestroy {
     this.countdown = 60;
     this.timerSub = setInterval(() => {
       this.countdown--;
+      this.cdr.detectChanges(); // Update UI in real-time
       if (this.countdown <= 0) {
         clearInterval(this.timerSub);
         this.countdown = 0;
+        this.cdr.detectChanges(); // Ensure final state is reflected
       }
     }, 1000);
   }

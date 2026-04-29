@@ -19,14 +19,14 @@ import { ApiService } from '../../services/api.service';
 import { DataPreloadService } from '../../services/data-preload.service';
 import { WebSocketService } from '../../services/websocket.service';
 import { SidebarService } from '../../services/sidebar.service';
-import { LogHistoryComponent } from '../../shared/components/log-history/log-history.component';
+
 import { ProfileTabService } from '../../services/profile-tab.service';
 import { Subscription } from 'rxjs';
 
 // Leaflet type declarations
 declare var L: any;
 
-type Section = 'overview' | 'signature' | 'leave' | 'history' | 'profile' | 'logs';
+type Section = 'overview' | 'signature' | 'leave' | 'history' | 'profile';
 
 interface LogEntry {
   id?: number; // Attendance record ID from backend
@@ -72,7 +72,7 @@ interface OverviewStat {
   standalone: true,
   templateUrl: './intern-dashboard.html',
   styleUrls: ['./intern-dashboard.css'],
-  imports: [NgIf, NgFor, NgClass, DatePipe, FormsModule, DecimalPipe, Profile, LoadingComponent, LogHistoryComponent]
+  imports: [NgIf, NgFor, NgClass, DatePipe, FormsModule, DecimalPipe, Profile, LoadingComponent]
 })
 export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
   private subscriptions = new Subscription();
@@ -83,13 +83,11 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
   // ======== SIDEBAR ========
   isSidebarExpanded: boolean = true;
 
-  // ======== NAVIGATION ========
   navItems: { key: Section; label: string; icon: string }[] = [
     { key: 'overview', label: 'Overview', icon: 'bi-speedometer2' },
     { key: 'signature', label: 'Signature', icon: 'bi-pencil-square' },
     { key: 'leave', label: 'Leave Request', icon: 'bi-calendar2-check' },
-    { key: 'history', label: 'Attendance History', icon: 'bi-clock-history' },
-    { key: 'logs', label: 'Log History', icon: 'bi-journal-text' }
+    { key: 'history', label: 'Attendance History', icon: 'bi-clock-history' }
   ];
   activeSection: Section = 'overview';
 
@@ -139,6 +137,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
   signedInToday = false;
   signedOutToday = false;
   onLeaveToday = false;
+  isSigningOut = false; // Prevent multiple auto-sign out calls
   currentAttendanceRecordId: number | null = null; // Track current attendance record ID
   currentAttendanceRecord: LogEntry | null = null; // Track current attendance record
   filterStartDate: string = '';
@@ -221,7 +220,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
           // Validate section
           const validSections: Section[] = ['overview', 'signature', 'leave', 'history', 'profile'];
           if (validSections.includes(section)) {
-            this.activeSection = section;
+            this.showSection(section);
           }
         }
       })
@@ -250,7 +249,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
     // Attendance logs will be loaded after intern ID is available
     this.loadInternData();
 
-    // ✅ Fetch field from /auth/me endpoint if not already available
+    // âœ… Fetch field from /auth/me endpoint if not already available
     if (!this.intern.field || this.intern.field.trim() === '') {
       this.fetchInternFieldFromDatabase();
     }
@@ -300,7 +299,83 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
       month: 'long',
       year: 'numeric'
     });
+    
+    // âœ… Check for auto sign-out every second
+    this.checkAutoSignOut();
+    
     this.cdr.detectChanges();
+  }
+
+  private checkAutoSignOut(): void {
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    
+    // Auto sign out at 17:00 (5:00 PM) or later if signed in and not yet signed out
+    if (hour >= 17 && this.signedInToday && !this.signedOutToday) {
+      console.log('â° Auto-sign out triggered (Time is 17:00 or later)');
+      this.autoSignOut();
+    }
+  }
+
+  private autoSignOut(): void {
+    // If already in middle of signing out, don't trigger again
+    if (this.isSigningOut) return;
+    this.isSigningOut = true;
+
+    // Check if we have a current attendance record
+    if (!this.currentAttendanceRecordId || !this.currentAttendanceRecord) {
+      const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
+      const todayRecord = this.logs.find(log =>
+        log.date.toISOString().split('T')[0] === todayStr && log.timeIn && !log.timeOut
+      );
+
+      if (todayRecord && todayRecord.id) {
+        this.currentAttendanceRecordId = todayRecord.id;
+        this.currentAttendanceRecord = todayRecord;
+      } else {
+        this.signedInToday = false;
+        this.isSigningOut = false;
+        return;
+      }
+    }
+
+    const locationName = this.nearestLocationName || 'Unknown Location';
+    const lat = this.currentLocation?.lat || 0;
+    const lng = this.currentLocation?.lng || 0;
+
+    this.attendanceService.signOut(
+      this.currentAttendanceRecordId,
+      locationName,
+      lat,
+      lng
+    ).subscribe({
+      next: (updatedRecord: any) => {
+        this.signedOutToday = true;
+        this.signedInToday = false;
+        this.currentAttendanceRecordId = null;
+        this.currentAttendanceRecord = null;
+        this.isSigningOut = false;
+        
+        // Refresh logs from backend
+        this.loadAttendanceLogs(); 
+        
+        Swal.fire({
+          icon: 'info',
+          title: 'Auto Sign-Out',
+          text: 'You have been automatically signed out as it is past 5:00 PM.',
+          timer: 5000,
+          showConfirmButton: true
+        });
+        
+        this.cdr.detectChanges();
+      },
+      error: (error) => {
+        console.error('Error during auto sign-out:', error);
+        this.isSigningOut = false;
+      }
+    });
   }
 
 
@@ -319,7 +394,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
           this.calculateOverviewStats(); // Recalculate stats when leave changes
           this.loadRecentData(); // Refresh recent data as well
           this.cdr.detectChanges();
-          console.log('🔄 Leave requests updated in real-time');
+          console.log('ðŸ”„ Leave requests updated in real-time');
         }
       })
     );
@@ -343,7 +418,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
           this.calculateOverviewStats(); // Recalculate stats when attendance changes
           this.loadRecentData();
           this.cdr.detectChanges();
-          console.log('🔄 Attendance updated in real-time');
+          console.log('ðŸ”„ Attendance updated in real-time');
         }
       })
     );
@@ -397,14 +472,12 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    // Get intern by email from backend
-    this.internService.getAllInterns().subscribe({
-      next: (interns: any[]) => {
-        // Find the intern with matching email
-        const internData = interns.find((i: any) =>
-          (i.email || '').toLowerCase() === internEmail.toLowerCase()
-        );
+    console.log('ðŸ”„ Loading intern profile from backend...');
 
+    // âœ… Use the new dedicated profile endpoint instead of getAllInterns()
+    // This endpoint is accessible to INTERN role and returns the true internId
+    this.apiService.get<any>('interns/my-profile').subscribe({
+      next: (internData) => {
         if (internData) {
           // Extract department name
           let departmentName = '';
@@ -416,7 +489,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
             departmentName = internData.department.name || internData.department.departmentName || '';
           }
 
-          // ✅ Extract field name (handle multiple formats)
+          // âœ… Extract field name (handle multiple formats)
           let fieldName = '';
           if (typeof internData.field === 'string' && internData.field.trim().length > 0) {
             fieldName = internData.field.trim();
@@ -428,84 +501,81 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
 
           // Update intern object with backend data
           this.intern.Department = departmentName || this.intern.Department;
-          // ✅ Only update field if we got a valid value from backend
+          
+          // âœ… Only update field if we got a valid value from backend
           if (fieldName) {
             this.intern.field = fieldName;
-            console.log('✅ Field loaded from intern data:', fieldName);
+            console.log('âœ… Field loaded from intern data:', fieldName);
           }
-          this.intern.id = internData.internId || internData.id || this.intern.id;
+
+          // âœ… SET ACTUAL INTERN ID (not userId)
+          // This is critical for bulk-imported interns whose userId != internId
+          this.intern.id = internData.id || internData.internId || this.intern.id;
+          
           this.intern.supervisorId = internData.supervisorId || this.intern.supervisorId;
+          
           // Load assigned location ID if available
           this.intern.assignedLocationId = internData.assignedLocationId || internData.assignedLocation?.locationId || null;
 
-          console.log('Intern data loaded:', {
+          console.log('âœ… Intern profile successfully synchronized:', {
+            internId: this.intern.id,
             name: this.intern.name,
             department: this.intern.Department,
-            field: this.intern.field,
-            assignedLocationId: this.intern.assignedLocationId
+            field: this.intern.field
           });
 
           // Load saved signature from MySQL after intern ID is available
           this.loadSavedSignature();
 
-          // ✅ Load attendance logs AFTER intern ID is set
-          // This ensures we always fetch from the backend database
+          // âœ… Load attendance logs AFTER intern ID is set correctly
           this.loadAttendanceLogs();
 
           this.cdr.detectChanges();
-        } else {
-          console.warn('Intern not found in backend for email:', internEmail);
-          // Even if intern not found, try to load attendance with current ID (might be 0)
-          // This will fail gracefully in loadAttendanceLogs()
-          setTimeout(() => {
-            this.loadAttendanceLogs();
-          }, 500);
         }
       },
       error: (error) => {
-        console.error('Error loading intern data:', error);
-        // Continue with default values if API call fails
-        // Try fetching from /auth/me as fallback
+        console.error('âŒ Error loading intern profile via my-profile:', error);
+        
+        // Fallback: If for some reason the new endpoint fails, we try to load logs anyway
+        // but this will likely crash if the ID is wrong (which is the main bug we're fixing)
+        if (this.intern.id && this.intern.id > 0) {
+          this.loadAttendanceLogs();
+        }
+        
+        // Try fetching from /auth/me as absolute fallback for field info
         this.fetchInternFieldFromDatabase();
-        // Still try to load attendance logs even if intern data load failed
-        // The loadAttendanceLogs() method will check if intern.id is valid
-        setTimeout(() => {
-          if (this.intern.id && this.intern.id > 0) {
-            this.loadAttendanceLogs();
-          }
-        }, 500);
       }
     });
   }
 
   /**
-   * ✅ Fetch intern field from backend database using /auth/me endpoint
+   * âœ… Fetch intern field from backend database using /auth/me endpoint
    */
   fetchInternFieldFromDatabase(): void {
     const internEmail = this.authService.getUserEmail();
     if (!internEmail) {
-      console.error('❌ Cannot fetch field: Intern email not available');
+      console.error('âŒ Cannot fetch field: Intern email not available');
       return;
     }
 
-    console.log('🔄 Fetching intern field from backend database for:', internEmail);
+    console.log('ðŸ”„ Fetching intern field from backend database for:', internEmail);
 
     // Use auth/me endpoint to get current user with field
     this.authService.getCurrentUser().subscribe({
       next: (user) => {
-        console.log('✅ Fetched user from backend:', user);
+        console.log('âœ… Fetched user from backend:', user);
         if (user.field) {
           this.intern.field = user.field;
-          console.log('✅ Field fetched from backend database:', {
+          console.log('âœ… Field fetched from backend database:', {
             field: user.field
           });
           this.cdr.detectChanges();
         } else {
-          console.warn('⚠️ Backend /auth/me endpoint does not return field');
+          console.warn('âš ï¸ Backend /auth/me endpoint does not return field');
         }
       },
       error: (error) => {
-        console.error('❌ Error fetching user from backend:', error);
+        console.error('âŒ Error fetching user from backend:', error);
         // Field will remain empty or use value from loadInternData()
       }
     });
@@ -527,7 +597,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
     setTimeout(() => {
       this.calculateOverviewStats();
       this.loadRecentData();
-      this.checkTodayStatus(); // ✅ Update today's status including leave
+      this.checkTodayStatus(); // âœ… Update today's status including leave
 
       this.cdr.detectChanges();
     }, 0);
@@ -560,25 +630,25 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
   }
 
   /**
-   * ✅ Retry location detection with fallback options (less strict)
+   * âœ… Retry location detection with fallback options (less strict)
    * Called when initial location request times out
    */
   retryLocationWithFallback(): void {
-    console.log('🔄 Retrying location detection with fallback options...');
+    console.log('ðŸ”„ Retrying location detection with fallback options...');
 
     if (!navigator.geolocation) {
       this.showMessage('Geolocation is not supported by your browser.', 'danger');
       return;
     }
 
-    // ✅ Use less strict options: no high accuracy, longer timeout, allow cached location
+    // âœ… Use less strict options: no high accuracy, longer timeout, allow cached location
     navigator.geolocation.getCurrentPosition(
       (position) => {
         this.currentLocation = {
           lat: position.coords.latitude,
           lng: position.coords.longitude
         };
-        console.log('✓ Location detected (fallback):', this.currentLocation);
+        console.log('âœ“ Location detected (fallback):', this.currentLocation);
         this.updateNearestLocation();
         this.checkLocationValidity();
         this.updateLocationMap();
@@ -609,9 +679,9 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
         this.cdr.detectChanges();
       },
       {
-        enableHighAccuracy: false, // ✅ Less accurate but faster
-        timeout: 20000, // ✅ 20 seconds timeout
-        maximumAge: 300000 // ✅ Allow cached location up to 5 minutes old
+        enableHighAccuracy: false, // âœ… Less accurate but faster
+        timeout: 20000, // âœ… 20 seconds timeout
+        maximumAge: 300000 // âœ… Allow cached location up to 5 minutes old
       }
     );
   }
@@ -645,7 +715,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
   showSection(section: Section): void {
     this.activeSection = section;
 
-    // ✅ Refresh recent data when overview section is shown
+    // âœ… Refresh recent data when overview section is shown
     if (section === 'overview') {
       this.loadRecentData();
       this.calculateOverviewStats();
@@ -656,10 +726,10 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
       this.loadLocations();
       // Always detect location when signature section is shown
       if (!this.currentLocation) {
-        console.log('📍 Signature section shown - detecting user location...');
+        console.log('ðŸ“ Signature section shown - detecting user location...');
         this.detectUserLocation();
       } else {
-        console.log('📍 Location already detected, refreshing...');
+        console.log('ðŸ“ Location already detected, refreshing...');
         // Refresh location even if already detected
         this.detectUserLocation();
       }
@@ -784,7 +854,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
         this.savedSignature = signatureData;
         this.isPadVisible = false;
         this.showMessage('Signature saved successfully to database! It will be used for all future sign-ins.', 'success');
-        console.log('✓ Signature saved to MySQL database for intern ID:', this.intern.id);
+        console.log('âœ“ Signature saved to MySQL database for intern ID:', this.intern.id);
       },
       error: (err) => {
         console.error('Error saving signature to database:', err);
@@ -802,12 +872,12 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
 
   // ======== LOCATIONS & MAP ========
   loadLocations(): void {
-    // ✅ Load locations from backend API instead of localStorage
+    // âœ… Load locations from backend API instead of localStorage
     this.locationService.getAllLocations().subscribe({
       next: (locations: Location[]) => {
         // Filter only active locations
         this.locations = locations.filter(loc => loc.active !== false);
-        console.log('✓ Loaded ' + this.locations.length + ' location(s) from backend API');
+        console.log('âœ“ Loaded ' + this.locations.length + ' location(s) from backend API');
 
         // If intern has an assigned location, ensure it's in the list
         if (this.intern.assignedLocationId) {
@@ -820,7 +890,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
               next: (location: Location) => {
                 if (location.active !== false) {
                   this.locations.push(location);
-                  console.log('✓ Added assigned location to list:', location.name);
+                  console.log('âœ“ Added assigned location to list:', location.name);
                 }
                 this.initializeMapIfReady();
                 this.cdr.detectChanges();
@@ -839,21 +909,9 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
         this.cdr.detectChanges();
       },
       error: (error) => {
-        console.error('❌ Error loading locations from backend:', error);
-        // Fallback to localStorage if API fails
-        const saved = localStorage.getItem('adminLocations');
-        if (saved) {
-          try {
-            this.locations = JSON.parse(saved);
-            console.log('✓ Loaded ' + this.locations.length + ' location(s) from localStorage (fallback)');
-          } catch (e) {
-            console.error('Error parsing locations from localStorage:', e);
-            this.locations = [];
-          }
-        } else {
-          console.log('No locations configured - sign-in will be allowed');
-          this.locations = [];
-        }
+        console.error('âŒ Error loading locations from backend:', error);
+        console.log('No locations configured or backend unavailable - sign-in will be allowed if no location restriction is set');
+        this.locations = [];
         this.initializeMapIfReady();
         this.cdr.detectChanges();
       }
@@ -862,7 +920,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
 
   /**
    * Initialize map if locations are available.
-   * currentLocation is optional — the map can show location markers without it.
+   * currentLocation is optional â€” the map can show location markers without it.
    */
   initializeMapIfReady(): void {
     if (this.locations.length > 0) {
@@ -881,7 +939,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
       window.location.hostname === '127.0.0.1';
 
     if (!isSecureOrigin) {
-      console.warn('⚠️ Geolocation unavailable on HTTP — showing map without live location.');
+      console.warn('âš ï¸ Geolocation unavailable on HTTP â€” showing map without live location.');
       this.initializeMapIfReady();
       this.cdr.detectChanges();
       return;
@@ -889,11 +947,11 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
 
     if (!navigator.geolocation) {
       this.showMessage('Geolocation is not supported by your browser.', 'danger');
-      console.error('❌ Geolocation API not available in this browser');
+      console.error('âŒ Geolocation API not available in this browser');
       return;
     }
 
-    console.log('🔍 Requesting location access...');
+    console.log('ðŸ” Requesting location access...');
 
     // Request location with improved options - try high accuracy first
     navigator.geolocation.getCurrentPosition(
@@ -902,8 +960,8 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
           lat: position.coords.latitude,
           lng: position.coords.longitude
         };
-        console.log('✅ Location detected:', this.currentLocation);
-        console.log('  Accuracy: ±' + position.coords.accuracy + ' meters');
+        console.log('âœ… Location detected:', this.currentLocation);
+        console.log('  Accuracy: Â±' + position.coords.accuracy + ' meters');
         console.log('  isWithinAllowedLocation:', this.isWithinAllowedLocation());
         console.log('  canSignInNow:', this.canSignInNow());
         console.log('  signedInToday:', this.signedInToday);
@@ -938,11 +996,11 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
         }, 500);
       },
       (error) => {
-        console.error('❌ Error getting location:', error);
+        console.error('âŒ Error getting location:', error);
         console.error('  Error code:', error.code);
         console.error('  Error message:', error.message);
 
-        // ✅ Better error handling with specific messages
+        // âœ… Better error handling with specific messages
         let errorMessage = 'Unable to retrieve your location. ';
 
         switch (error.code) {
@@ -972,8 +1030,8 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
             break;
           case error.TIMEOUT:
             errorMessage = 'Location request timed out. Trying again with less accurate settings...';
-            console.log('⏱️ Retrying with fallback options...');
-            // ✅ Retry with less strict options
+            console.log('â±ï¸ Retrying with fallback options...');
+            // âœ… Retry with less strict options
             this.retryLocationWithFallback();
             return; // Don't show error message yet, let retry happen
           default:
@@ -1001,14 +1059,14 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
         this.locationWatchId = null;
       }
 
-      // ✅ Use less strict options for watchPosition to avoid timeouts
+      // âœ… Use less strict options for watchPosition to avoid timeouts
       this.locationWatchId = navigator.geolocation.watchPosition(
         (position) => {
           this.currentLocation = {
             lat: position.coords.latitude,
             lng: position.coords.longitude
           };
-          console.log('✓ Location updated:', this.currentLocation);
+          console.log('âœ“ Location updated:', this.currentLocation);
           console.log('  isWithinAllowedLocation:', this.isWithinAllowedLocation());
           this.updateNearestLocation();
           this.checkLocationValidity();
@@ -1022,7 +1080,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
         (error) => {
           console.error('Error watching location:', error);
         },
-        { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 } // ✅ Less strict to avoid timeouts
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 } // âœ… Less strict to avoid timeouts
       );
     }
   }
@@ -1080,10 +1138,10 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
         scrollWheelZoom: true
       }).setView([initialLat, initialLng], initialZoom);
 
-      // Add OpenStreetMap tile layer
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '', // Remove attribution message
-        maxZoom: 19
+      // Add Google Maps Hybrid tile layer (Satellite + Labels)
+      L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        attribution: '&copy; Google Maps',
+        maxZoom: 20
       }).addTo(this.locationMap);
 
       this.isLocationMapReady = true;
@@ -1094,7 +1152,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
         this.cdr.detectChanges();
       }, 100);
 
-      console.log('✓ Location map initialized successfully');
+      console.log('âœ“ Location map initialized successfully');
     } catch (error) {
       console.error('Error initializing location map:', error);
     }
@@ -1126,7 +1184,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
       if (this.locationWatchId !== null && navigator.geolocation) {
         navigator.geolocation.clearWatch(this.locationWatchId);
         this.locationWatchId = null;
-        console.log('✓ Location tracking stopped');
+        console.log('âœ“ Location tracking stopped');
       }
 
       // Step 2: Clear current location temporarily
@@ -1137,7 +1195,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
 
       // Step 4: Restart location detection after a brief delay
       setTimeout(() => {
-        console.log('✓ Restarting location detection...');
+        console.log('âœ“ Restarting location detection...');
         this.detectUserLocation();
 
         // Step 5: Wait for location to be detected, then update map
@@ -1281,14 +1339,11 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
       this.locationMapMarkers.push(marker);
     });
 
-    // Fit map to show all locations and user (if available)
+    // Fit map to show all locations (ignoring user location for bounds to avoid zooming out too far)
     if (this.locations.length > 0) {
       const boundsPoints: [number, number][] = this.locations.map(loc => [loc.latitude, loc.longitude]);
-      if (this.currentLocation) {
-        boundsPoints.push([this.currentLocation.lat, this.currentLocation.lng]);
-      }
       const bounds = L.latLngBounds(boundsPoints);
-      this.locationMap.fitBounds(bounds, { padding: [20, 20] });
+      this.locationMap.fitBounds(bounds, { maxZoom: 16, padding: [20, 20] });
     }
   }
 
@@ -1428,15 +1483,15 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
         const isWithin = distance <= assignedLocation.radius;
 
         if (isWithin) {
-          console.log(`✓ Location is valid - within assigned location: ${assignedLocation.name}`);
+          console.log(`âœ“ Location is valid - within assigned location: ${assignedLocation.name}`);
         } else {
-          console.log(`✗ Location is invalid - outside assigned location: ${assignedLocation.name} (distance: ${distance.toFixed(0)}m, required: ${assignedLocation.radius}m)`);
+          console.log(`âœ— Location is invalid - outside assigned location: ${assignedLocation.name} (distance: ${distance.toFixed(0)}m, required: ${assignedLocation.radius}m)`);
         }
 
         return isWithin;
       } else {
         // Assigned location not found in active locations
-        console.warn('⚠️ Assigned location not found in active locations');
+        console.warn('âš ï¸ Assigned location not found in active locations');
         return false;
       }
     }
@@ -1454,9 +1509,9 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
 
     // Log for debugging
     if (isWithin) {
-      console.log('✓ Location is valid - within allowed location');
+      console.log('âœ“ Location is valid - within allowed location');
     } else {
-      console.log('✗ Location is invalid - outside allowed locations');
+      console.log('âœ— Location is invalid - outside allowed locations');
     }
 
     return isWithin;
@@ -1533,20 +1588,46 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
 
   // ======== SIGN IN / SIGN OUT ========
 
+  getNearestLocationStartTime(): string {
+    if (this.nearestLocationName) {
+      const location = this.locations.find(l => l.name === this.nearestLocationName);
+      if (location && location.allowedStartTime) {
+        return location.allowedStartTime;
+      }
+    }
+    return '08:00'; // Default
+  }
+
   canSignInNow(): boolean {
     const now = new Date();
+    const day = now.getDay();
+    
+    // Block sign-ins on weekends (0 = Sunday, 6 = Saturday)
+    if (day === 0 || day === 6) return false;
+    
     const hour = now.getHours();
     const minute = now.getMinutes();
-    // Allowed between 08:00 and 13:00 (exclusive)
-    return hour >= 8 && (hour < 13 || (hour === 13 && minute === 0));
+    
+    const startTimeStr = this.getNearestLocationStartTime();
+    const [startHour, startMinute] = startTimeStr.split(':').map(Number);
+    
+    // Allowed between allowedStartTime and 17:00 (5:00 PM)
+    const afterStart = hour > startHour || (hour === startHour && minute >= startMinute);
+    const beforeEnd = hour < 17;
+    
+    return afterStart && beforeEnd;
   }
 
   isBeforeSignInTime(): boolean {
     const now = new Date();
     const hour = now.getHours();
     const minute = now.getMinutes();
-    // Check if time is before 08:00
-    return hour < 8;
+    
+    const startTimeStr = this.getNearestLocationStartTime();
+    const [startHour, startMinute] = startTimeStr.split(':').map(Number);
+    
+    // Check if time is before allowedStartTime
+    return hour < startHour || (hour === startHour && minute < startMinute);
   }
 
   canSignOutNow(): boolean {
@@ -1560,8 +1641,26 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
   }
 
   signIn(): void {
+    const now = new Date();
+    const day = now.getDay();
+
+    // Block sign-ins on weekends
+    if (day === 0 || day === 6) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Sign-in Blocked',
+        text: 'Sign-ins are not allowed on weekends. Please sign in during working days (Monday - Friday).',
+        confirmButtonColor: '#1e3a5f'
+      });
+      return;
+    }
+
     if (!this.savedSignature) {
       this.showMessage('Please save your signature before signing in.', 'warning');
+      return;
+    }
+    if (this.signedOutToday) {
+      this.showMessage('You have already signed in and out today. Only one sign-in per day is allowed.', 'warning');
       return;
     }
     if (!this.currentLocation || !this.isWithinAllowedLocation()) {
@@ -1587,7 +1686,6 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    const now = new Date();
     // Use signIn endpoint with correct format
     const signInRequest = {
       internId: this.intern.id!,
@@ -1638,7 +1736,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
         this.cdr.detectChanges();
         this.showMessage(`Signed in successfully at ${this.nearestLocationName}`, 'success');
 
-        // ✅ Reload attendance logs from backend to ensure data consistency
+        // âœ… Reload attendance logs from backend to ensure data consistency
         // This ensures the data persists even after server restart
         setTimeout(() => {
           this.loadAttendanceLogs();
@@ -1735,7 +1833,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
             this.cdr.detectChanges();
             this.showMessage(`Signed out successfully at ${this.nearestLocationName}. Status: ${finalStatusText}`, 'success');
 
-            // ✅ Reload attendance logs from backend to ensure data consistency
+            // âœ… Reload attendance logs from backend to ensure data consistency
             // This ensures the data persists even after server restart
             setTimeout(() => {
               this.loadAttendanceLogs();
@@ -1751,6 +1849,10 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
   }
 
   clearTodayRegister(): void {
+    if (this.signedOutToday) {
+      this.showMessage('Cannot clear register after you have already signed out for the day.', 'warning');
+      return;
+    }
     const todayStr = new Date().toDateString();
     this.logs = this.logs.filter(log => log.date.toDateString() !== todayStr);
     this.signedInToday = false;
@@ -1874,7 +1976,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
   }
 
 
-  // ✅ Generate weekdays (Mon–Fri) between two dates
+  // âœ… Generate weekdays (Monâ€“Fri) between two dates
   generateWeekdays(startDate: Date, endDate: Date): Date[] {
     const dates: Date[] = [];
     let current = new Date(startDate);
@@ -1889,14 +1991,12 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
     return dates;
   }
 
-  // ✅ Create combined list including Absent / On Leave days
+  // âœ… Create combined list including Absent / On Leave days
   getFullWeekLogs(): any[] {
-    if (!this.logs || this.logs.length === 0) return [];
-
-    const allDates = this.generateWeekdays(
-      this.getMondayOfCurrentWeek(),
-      this.getFridayOfCurrentWeek()
-    );
+    // Generate standard working dates (Mon-Fri)
+    const monday = this.getMondayOfCurrentWeek();
+    const friday = this.getFridayOfCurrentWeek();
+    const allDates = this.generateWeekdays(monday, friday);
 
     return allDates.map(date => {
       const existingLogs = this.logs.filter(
@@ -1904,9 +2004,9 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
       );
 
       if (existingLogs.length > 0) {
-        return existingLogs[0]; // existing attendance entry
+        return existingLogs[0]; 
       } else {
-        // No log found → create placeholder record
+        // No log found â†’ create placeholder record
         return {
           date: date,
           image: null,
@@ -1914,12 +2014,13 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
           timeIn: null,
           timeOut: null,
           action: this.getAttendanceStatus(date),
+          status: this.getAttendanceStatus(date)
         };
       }
     });
   }
 
-  // ✅ Helper to get Monday and Friday of current week
+  // âœ… Helper to get Monday and Friday of current week
   getMondayOfCurrentWeek(): Date {
     const now = new Date();
     const day = now.getDay();
@@ -1967,24 +2068,24 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
    * Load attendance logs from backend
    */
   loadAttendanceLogs(): void {
-    // ✅ Always check if intern ID is valid before loading
+    // âœ… Always check if intern ID is valid before loading
     if (!this.intern.id || this.intern.id === 0) {
-      console.warn('⚠️ Cannot load attendance logs: Intern ID not available yet. Will retry...');
+      console.warn('âš ï¸ Cannot load attendance logs: Intern ID not available yet. Will retry...');
       // Retry after a delay if intern ID is not yet available
       setTimeout(() => {
         if (this.intern.id && this.intern.id > 0) {
-          console.log('🔄 Retrying to load attendance logs with intern ID:', this.intern.id);
+          console.log('ðŸ”„ Retrying to load attendance logs with intern ID:', this.intern.id);
           this.loadAttendanceLogs();
         }
       }, 1000);
       return;
     }
 
-    console.log('📊 Loading attendance logs from backend for intern ID:', this.intern.id);
+    console.log('ðŸ“Š Loading attendance logs from backend for intern ID:', this.intern.id);
     this.attendanceService.getAttendanceByIntern(this.intern.id).subscribe({
       next: (records) => {
-        console.log(`✅ Loaded ${records.length} attendance record(s) from backend database`);
-        // ✅ Always load from backend - never use localStorage for attendance data
+        console.log(`âœ… Loaded ${records.length} attendance record(s) from backend database`);
+        // âœ… Always load from backend - never use localStorage for attendance data
         this.logs = records.map((record: any) => ({
           id: record.id || record.attendanceId || undefined,
           date: new Date(record.date),
@@ -2027,8 +2128,8 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
         }, 0);
       },
       error: (error) => {
-        console.error('❌ Error loading attendance logs from backend:', error);
-        // ✅ Don't clear logs on error - keep existing data if available
+        console.error('âŒ Error loading attendance logs from backend:', error);
+        // âœ… Don't clear logs on error - keep existing data if available
         // Only clear if we have no logs at all (first load)
         if (this.logs.length === 0) {
           this.logs = [];
@@ -2054,7 +2155,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
       next: (response) => {
         if (response.hasSignature && response.signature) {
           this.savedSignature = response.signature;
-          console.log('✓ Loaded saved signature from MySQL database for intern ID:', this.intern.id);
+          console.log('âœ“ Loaded saved signature from MySQL database for intern ID:', this.intern.id);
         } else {
           console.log('No signature found in database for intern ID:', this.intern.id);
           this.savedSignature = null;
@@ -2070,17 +2171,15 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
-  // ======== LOCAL STORAGE (for logs only, NOT signature) ========
+  // No longer using local storage for persistent data
   saveData(): void {
-    // Do NOT save signature to localStorage - it's in MySQL now
-    // Only save logs to localStorage (for UI state)
+    // Persistent data is now handled via MySQL
     this.calculateOverviewStats();
     this.loadRecentData();
   }
 
   loadData(): void {
-    // Do NOT load signature from localStorage - it's loaded from MySQL via loadSavedSignature()
-    // This method is kept for backward compatibility but doesn't load signature anymore
+    // Persistent data is now handled via MySQL
   }
 
   // ======== LEAVE REQUEST ========
@@ -2338,6 +2437,15 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
+  get declinedLeaveRequests(): LeaveRequest[] {
+    return this.leaveRequests.filter(leave => leave.status === 'Declined');
+  }
+
+  get nonDeclinedFilteredLeaveRequests(): LeaveRequest[] {
+    return this.filteredLeaveRequests.filter(leave => leave.status !== 'Declined');
+  }
+
+
   /**
    * Helper method to map backend leave requests to frontend model
    */
@@ -2396,7 +2504,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
         this.filteredLeaveRequests = [...this.leaveRequests];
         console.log('Filtered leave requests:', this.filteredLeaveRequests);
 
-        // ✅ Update recent leave requests and overview stats
+        // âœ… Update recent leave requests and overview stats
         this.calculateOverviewStats();
         this.loadRecentData();
 
@@ -2407,7 +2515,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
         console.error('Error details:', JSON.stringify(error, null, 2));
         this.leaveRequests = [];
         this.filteredLeaveRequests = [];
-        this.recentLeaveRequests = []; // ✅ Clear recent leave requests on error
+        this.recentLeaveRequests = []; // âœ… Clear recent leave requests on error
         this.cdr.detectChanges();
       }
     });
@@ -2505,6 +2613,29 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
   onFileSelect(event: Event): void {
     const input = event.target as HTMLInputElement;
     this.attachment = input.files?.[0] || null;
+  }
+
+  downloadAttachment(filename: string): void {
+    if (!filename) return;
+
+    this.leaveRequestService.downloadAttachment(filename).subscribe({
+      next: (blob) => {
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        window.URL.revokeObjectURL(url);
+      },
+      error: (error) => {
+        console.error('Error downloading attachment:', error);
+        Swal.fire({
+          icon: 'error',
+          title: 'Download Failed',
+          text: 'Could not download the attachment. Please try again.'
+        });
+      }
+    });
   }
 
   // ======== ALERT MESSAGE (SweetAlert2) ========
@@ -2739,7 +2870,7 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
         };
       }
 
-      // No log found → create placeholder
+      // No log found â†’ create placeholder
       return {
         date: date,
         image: null,
@@ -3148,9 +3279,9 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
               'FAST' // compression
             );
 
-            console.log(`✓ Successfully added signature for record ${cellPos.recordIndex} on page ${targetPage} (format: ${extractedImage.imageFormat})`);
+            console.log(`âœ“ Successfully added signature for record ${cellPos.recordIndex} on page ${targetPage} (format: ${extractedImage.imageFormat})`);
           } catch (error) {
-            console.error(`✗ Error adding signature image for record ${cellPos.recordIndex}:`, error);
+            console.error(`âœ— Error adding signature image for record ${cellPos.recordIndex}:`, error);
             // Draw dash if image fails
             try {
               doc.setPage(cellPos.page);
@@ -3453,10 +3584,10 @@ export class InternDashboard implements OnInit, AfterViewInit, OnDestroy {
           return dateB - dateA; // Most recent first
         })
         .slice(0, 5);
-      console.log('✓ Updated recent leave requests for overview:', this.recentLeaveRequests.length, 'request(s)');
+      console.log('âœ“ Updated recent leave requests for overview:', this.recentLeaveRequests.length, 'request(s)');
     } else {
       this.recentLeaveRequests = [];
-      console.log('ℹ️ No leave requests available for recent list');
+      console.log('â„¹ï¸ No leave requests available for recent list');
     }
   }
 

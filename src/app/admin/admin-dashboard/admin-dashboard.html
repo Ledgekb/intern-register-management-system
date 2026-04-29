@@ -13,9 +13,11 @@
             <i [class]="item.icon"></i>
             <span class="nav-text" *ngIf="isSidebarExpanded">{{ item.label }}</span>
             <span *ngIf="item.id === 'Intern Leave status' && newLeaveRequestsCount > 0 && isSidebarExpanded"
-              class="badge bg-gold rounded-pill notification-badge">
+              class="badge bg-gold rounded-0 notification-badge">
               {{ newLeaveRequestsCount }}
             </span>
+            <!-- Pulse indicator for errors in Log History -->
+            <div *ngIf="item.isErrorAlert" class="nav-indicator-pulse"></div>
           </a>
         </li>
       </ul>
@@ -58,7 +60,7 @@
 
       <!-- User Card - Visible on Mobile Only (Sidebar is hidden on mobile) -->
       <!-- <div class="user-card-container mb-4 d-md-none">
-        <div class="card user-card shadow-sm border-0 rounded-4">
+        <div class="card user-card shadow-sm border-0 rounded-0">
           <div class="card-body p-3 p-md-4">
             <div class="row align-items-center g-3">
               <div class="col-auto">
@@ -92,67 +94,21 @@
         </div>
       </div> -->
 
-      <!-- Section Navigation Card (Mobile Only) -->
-      <ng-container *ngTemplateOutlet="adminMobileSectionNav"></ng-container>
 
-      <ng-template #adminMobileSectionNav>
-        <div class="mobile-section-bar d-md-none">
-          <div class="card shadow-sm border-0 rounded-4 mb-4">
-            <div class="card-header bg-white border-0 py-3 px-4">
-              <div class="mobile-section-scroll" role="group" aria-label="Admin mobile section navigation">
-                <button type="button" class="btn btn-sm btn-outline-navy mobile-section-btn rounded-end-0"
-                  [class.active]="isSectionActive('overview')" (click)="showSection('overview')" title="Overview">
-                  <i class="bi bi-grid-3x3-gap me-1"></i><span>Dashboard</span>
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-navy mobile-section-btn rounded-0"
-                  [class.active]="isSectionActive('Manage Field')" (click)="showSection('Manage Field')" title="Fields">
-                  <i class="bi bi-building me-1"></i><span>Fields</span>
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-navy mobile-section-btn rounded-0"
-                  [class.active]="isSectionActive('Supervisor')" (click)="showSection('Supervisor')"
-                  title="Supervisors">
-                  <i class="bi bi-person-badge me-1"></i><span>Supervisors</span>
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-navy mobile-section-btn rounded-0"
-                  [class.active]="isSectionActive('interns')" (click)="showSection('interns')" title="Interns">
-                  <i class="bi bi-people-fill me-1"></i><span>Interns</span>
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-navy mobile-section-btn rounded-0"
-                  [class.active]="isSectionActive('Intern Leave status')" (click)="showSection('Intern Leave status')"
-                  title="Leave">
-                  <i class="bi bi-calendar-check me-1"></i><span>Leave</span>
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-navy mobile-section-btn rounded-0"
-                  [class.active]="isSectionActive('Attendance history')" (click)="showSection('Attendance history')"
-                  title="History">
-                  <i class="bi bi-clock-history me-1"></i><span>History</span>
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-navy mobile-section-btn rounded-0"
-                  [class.active]="isSectionActive('reports')" (click)="showSection('reports')" title="Reports">
-                  <i class="bi bi-file-earmark-text me-1"></i><span>Reports</span>
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-navy mobile-section-btn rounded-start-0"
-                  [class.active]="isSectionActive('Locations')" (click)="showSection('Locations')" title="Locations">
-                  <i class="bi bi-geo-alt-fill me-1"></i><span>Locations</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </ng-template>
 
       <!-- ===================== OVERVIEW SECTION ===================== -->
       <div *ngIf="activeSection === 'overview'" class="section-animate">
 
         <!-- Welcome Header -->
-        <div class="card shadow-sm border-0 rounded-4 mb-4 overview-header-card">
+        <div class="card shadow-sm border-0 rounded-0 mb-4 overview-header-card">
           <div class="card-body p-4">
             <div class="row align-items-center">
               <div class="col-12 col-md-8">
                 <h3 class="fw-bold text-navy mb-2">
                   <i class="bi bi-speedometer2 me-2"></i>Dashboard Overview
                 </h3>
-                <p class="text-muted mb-0">Welcome back, {{ admin?.name }}! Here's a quick summary of your system.</p>
+                <p class="text-muted mb-0">Welcome back, <strong class="text-navy">{{ admin?.name }}</strong>! Here's a
+                  quick summary of your system.</p>
               </div>
               <div class="col-12 col-md-4 text-end mt-3 mt-md-0 d-flex align-items-center justify-content-end gap-2">
                 <span class="badge bg-navy text-white px-3 py-2 fs-6">
@@ -165,8 +121,8 @@
 
         <!-- ===== OVERVIEW CARDS ===== -->
         <div class="row g-4 mb-4">
-          <div class="col-12 col-sm-6 col-md-4 col-lg-3" *ngFor="let stat of overviewStats">
-            <div class="card overview-stat-card shadow-sm border-0 rounded-4 text-center py-4 h-100 hover-pointer"
+          <div class="col-12 col-sm-6 col-md-4 col-lg" *ngFor="let stat of overviewStats">
+            <div class="card overview-stat-card shadow-sm border-0 rounded-0 text-center py-4 h-100 hover-pointer"
               [class]="'stat-card-' + stat.color" (click)="openModal(stat)">
               <div class="card-body">
                 <div class="stat-icon-wrapper mb-3">
@@ -184,292 +140,8 @@
           </div>
         </div>
 
-        <!-- ===== ADMIN MODAL ===== -->
-        <div class="modal fade" id="adminModal" tabindex="-1" aria-labelledby="adminModalLabel" aria-hidden="true">
-          <div class="modal-dialog modal-xl modal-dialog-centered">
-            <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
-
-              <div class="modal-header bg-navy text-white">
-                <h5 class="modal-title" id="adminModalLabel">
-                  <i class="bi bi-person-badge-fill me-2"></i>{{ selectedStat?.label }}
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-              </div>
-
-              <!-- ===== MODAL BODY ===== -->
-              <div class="modal-body bg-light py-4">
-
-                <!-- ===== DEFAULT VIEW ===== -->
-                <div
-                  *ngIf="selectedStat?.label !== 'Absent' && selectedStat?.label !== 'On Leave'&& selectedStat?.label !== 'Present Today'; else leaveOrAbsentTable"
-                  class="text-center">
-                  <div class="fs-1 text-{{ selectedStat?.color }}">
-                    <i [class]="selectedStat?.icon"></i>
-                  </div>
-                  <h4 class="fw-bold mt-3">{{ selectedStat?.label }}</h4>
-                  <p class="display-6 fw-bold text-{{ selectedStat?.color }}">{{ selectedStat?.value }}</p>
-                </div>
-
-                <!-- ================= LEAVE / ABSENT / PRESENT MODAL ================= -->
-
-
-                <ng-template #leaveOrAbsentTable>
-
-                  <!-- On Leave Section -->
-                  <ng-container *ngIf="selectedStat?.label === 'On Leave'">
-                    <ng-container *ngTemplateOutlet="onLeaveTemplate"></ng-container>
-                  </ng-container>
-
-                  <!-- Absent Section -->
-                  <ng-container *ngIf="selectedStat?.label === 'Absent'">
-                    <ng-container *ngTemplateOutlet="absentTemplate"></ng-container>
-                  </ng-container>
-
-                  <!-- Present Today Section -->
-                  <ng-container *ngIf="selectedStat?.label === 'Present Today'">
-                    <ng-container *ngTemplateOutlet="presentTemplate"></ng-container>
-                  </ng-container>
-
-                </ng-template>
-
-                <!-- ================= ON LEAVE TEMPLATE ================= -->
-                <ng-template #onLeaveTemplate>
-                  <div class="card shadow-sm border-0 rounded-4 p-3">
-                    <h5 class="text-navy fw-bold mb-3">
-                      <i class="bi bi-calendar-check me-2"></i>Recent Leave Requests
-                    </h5>
-
-                    <!-- Filters -->
-                    <div class="row g-3 align-items-end mb-3">
-                      <div class="col-12 col-md-4">
-                        <label class="form-label fw-medium">Intern Name</label>
-                        <input type="text" class="form-control" placeholder="Search by name..."
-                          [(ngModel)]="filterName" />
-                      </div>
-                      <div class="col-12 col-md-4">
-                        <label class="form-label fw-medium">Department</label>
-                        <select class="form-select" [(ngModel)]="filterDepartment"
-                          (change)="filteredFields = filterDepartment ? fieldMap[filterDepartment] : []; filterField = ''; currentPage = 1">
-                          <option value="">All</option>
-                          <option *ngFor="let dept of departmentList" [value]="dept">{{ dept }}</option>
-                        </select>
-                      </div>
-                      <div class="col-12 col-md-4">
-                        <label class="form-label fw-medium">Field</label>
-                        <select class="form-select" [(ngModel)]="filterField" (change)="currentPage = 1">
-                          <option value="">All</option>
-                          <option *ngFor="let field of filteredFields" [value]="field">{{ field }}</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <!-- Table -->
-                    <div class="table-responsive">
-                      <table class="table table-hover align-middle text-center">
-                        <thead class="table-light">
-                          <tr>
-                            <th>Intern</th>
-                            <th>Department</th>
-                            <th>Field</th>
-                            <th>Start Date</th>
-                            <th>End Date</th>
-                            <th>Reason</th>
-                            <th>Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr *ngFor="let leave of paginatedLeaves">
-                            <td>{{ leave.name }}</td>
-                            <td>{{ leave.department }}</td>
-                            <td>{{ leave.field }}</td>
-                            <td>{{ leave.startDate }}</td>
-                            <td>{{ leave.endDate }}</td>
-                            <td>{{ leave.reason }}</td>
-                            <td>
-                              <span class="badge rounded-pill" [ngClass]="{
-                      'bg-success': leave.status === 'Approved',
-                      'bg-warning text-dark': leave.status === 'Pending',
-                      'bg-danger': leave.status === 'Declined'
-                    }">{{ leave.status }}</span>
-                            </td>
-                          </tr>
-                          <tr *ngIf="paginatedLeaves.length === 0">
-                            <td colspan="7" class="text-muted text-center">No leave records found.</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <!-- Pagination -->
-                    <div class="d-flex justify-content-between align-items-center mt-2">
-                      <button class="btn btn-outline-navy rounded-5" [disabled]="currentPage === 1"
-                        (click)="prevPage()">
-                        <i class="bi bi-arrow-left-circle me-1"></i> Previous
-                      </button>
-                      <span class="fw-semibold text-muted">Page {{ currentPage }} of {{ totalPages }}</span>
-                      <button class="btn btn-outline-navy rounded-5" [disabled]="currentPage === totalPages"
-                        (click)="nextPage()">
-                        Next <i class="bi bi-arrow-right-circle ms-1"></i>
-                      </button>
-                    </div>
-                  </div>
-                </ng-template>
-
-                <!-- ================= ABSENT TEMPLATE ================= -->
-                <ng-template #absentTemplate>
-                  <div class="card shadow-sm border-0 rounded-4 p-3">
-                    <h5 class="text-danger fw-bold mb-3">
-                      <i class="bi bi-graph-down me-2"></i>Intern Attendance Summary
-                    </h5>
-
-                    <!-- Filters -->
-                    <div class="row g-3 align-items-end mb-3">
-                      <div class="col-12 col-md-4">
-                        <label class="form-label fw-medium">Intern Name</label>
-                        <input type="text" class="form-control" placeholder="Search by name..."
-                          [(ngModel)]="attendanceFilterName" />
-                      </div>
-                      <div class="col-12 col-md-4">
-                        <label class="form-label fw-medium">Department</label>
-                        <select class="form-select" [(ngModel)]="attendanceFilterDepartment"
-                          (change)="updateAttendanceFields()">
-                          <option value="">All</option>
-                          <option *ngFor="let dept of departmentList" [value]="dept">{{ dept }}</option>
-                        </select>
-                      </div>
-                      <div class="col-12 col-md-4">
-                        <label class="form-label fw-medium">Field</label>
-                        <select class="form-select" [(ngModel)]="attendanceFilterField">
-                          <option value="">All</option>
-                          <option *ngFor="let field of filteredAttendanceFields" [value]="field">{{ field }}</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <!-- Table -->
-                    <div class="table-responsive">
-                      <table class="table table-hover align-middle text-center">
-                        <thead class="table-light">
-                          <tr>
-                            <th>Intern</th>
-                            <th>Department</th>
-                            <th>Field</th>
-                            <th>Absent</th>
-                            <th>Attendance %</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr *ngFor="let data of paginatedAttendance">
-                            <td>{{ data.name }}</td>
-                            <td>{{ data.department }}</td>
-                            <td>{{ data.field }}</td>
-                            <td class="text-danger fw-semibold">{{ data.absent }}</td>
-                            <td><span class="badge bg-navy">{{ data.attendanceRate }}%</span></td>
-                          </tr>
-                          <tr *ngIf="paginatedAttendance.length === 0">
-                            <td colspan="7" class="text-center text-muted">No attendance records found.</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <!-- Pagination -->
-                    <div class="d-flex justify-content-between align-items-center mt-2">
-                      <button class="btn btn-outline-navy rounded-5" [disabled]="attendancePage === 1"
-                        (click)="prevAttendancePage()">
-                        <i class="bi bi-arrow-left-circle me-1"></i> Previous
-                      </button>
-                      <span class="fw-semibold text-muted">Page {{ attendancePage }} of {{ totalAttendancePages
-                        }}</span>
-                      <button class="btn btn-outline-navy rounded-5"
-                        [disabled]="attendancePage === totalAttendancePages" (click)="nextAttendancePage()">
-                        Next <i class="bi bi-arrow-right-circle ms-1"></i>
-                      </button>
-                    </div>
-                  </div>
-                </ng-template>
-
-                <!-- ================= PRESENT TODAY TEMPLATE ================= -->
-                <ng-template #presentTemplate>
-                  <div class="card shadow-sm border-0 rounded-4 p-3">
-                    <h5 class="text-success fw-bold mb-3">
-                      <i class="bi bi-graph-up-arrow me-2"></i>Present Interns Today
-                    </h5>
-
-                    <!-- Filters -->
-                    <div class="row g-3 align-items-end mb-3">
-                      <div class="col-12 col-md-4">
-                        <label class="form-label fw-medium">Intern Name</label>
-                        <input type="text" class="form-control" placeholder="Search by name..."
-                          [(ngModel)]="presentFilterName" />
-                      </div>
-                      <div class="col-12 col-md-4">
-                        <label class="form-label fw-medium">Department</label>
-                        <select class="form-select" [(ngModel)]="presentFilterDepartment"
-                          (change)="updatePresentFields()">
-                          <option value="">All Departments</option>
-                          <option *ngFor="let dept of departmentList" [value]="dept">{{ dept }}</option>
-                        </select>
-                      </div>
-                      <div class="col-12 col-md-4">
-                        <label class="form-label fw-medium">Field</label>
-                        <select class="form-select" [(ngModel)]="presentFilterField">
-                          <option value="">All Fields</option>
-                          <option *ngFor="let field of filteredPresentFields" [value]="field">{{ field }}</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <!-- Table -->
-                    <div class="table-responsive">
-                      <table class="table table-hover align-middle text-center">
-                        <thead class="table-light">
-                          <tr>
-                            <th>Name</th>
-                            <th>Department</th>
-                            <th>Field</th>
-                            <th>Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr *ngFor="let intern of paginatedPresentInterns">
-                            <td>{{ intern.name }}</td>
-                            <td>{{ intern.department }}</td>
-                            <td>{{ intern.field }}</td>
-                            <td>
-                              <span class="badge rounded-pill bg-success"
-                                *ngIf="intern.status === 'Present'">Present</span>
-                            </td>
-                          </tr>
-                          <tr *ngIf="paginatedPresentInterns.length === 0">
-                            <td colspan="4" class="text-muted text-center">No interns found.</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <!-- Pagination -->
-                    <div class="d-flex justify-content-between align-items-center mt-3">
-                      <button class="btn btn-outline-navy rounded-5" [disabled]="presentPage === 1"
-                        (click)="prevPresentPage()">
-                        <i class="bi bi-arrow-left-circle me-1"></i> Previous
-                      </button>
-                      <span class="fw-semibold text-muted">Page {{ presentPage }} of {{ totalPresentPages }}</span>
-                      <button class="btn btn-outline-navy rounded-5" [disabled]="presentPage === totalPresentPages"
-                        (click)="nextPresentPage()">
-                        Next <i class="bi bi-arrow-right-circle ms-1"></i>
-                      </button>
-                    </div>
-                  </div>
-                </ng-template>
-
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- ===================== ATTENDANCE SUMMARY ===================== -->
-        <div class="card shadow-sm border-0 mb-4 rounded-4 overview-table-card">
+        <div class="card shadow-sm border-0 mb-4 rounded-0 overview-table-card">
           <div class="card-header bg-white border-0 pb-0 pt-4 px-4">
             <div
               class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-3">
@@ -560,7 +232,7 @@
         </div>
 
         <!-- ===================== LEAVE OVERVIEW ===================== -->
-        <div class="card shadow-sm border-0 mb-4 rounded-4 overview-table-card">
+        <div class="card shadow-sm border-0 mb-4 rounded-0 overview-table-card">
           <div class="card-header bg-white border-0 pb-0 pt-4 px-4">
             <div
               class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-3">
@@ -580,50 +252,68 @@
 
           <div class="card-body p-0">
             <div class="table-responsive">
-              <table class="table table-hover align-middle mb-0 overview-table">
-                <thead class="table-light">
+              <table class="table align-middle mb-0 leave-requests-table">
+                <thead>
                   <tr>
-                    <th class="ps-4">Intern</th>
-                    <th>Department</th>
-                    <th>Field</th>
-                    <th>Start Date</th>
-                    <th>End Date</th>
+                    <th class="ps-3">Intern</th>
+                    <th>Department & Field</th>
+                    <th>Duration</th>
                     <th>Reason</th>
-                    <th class="text-center pe-4">Status</th>
+                    <th class="text-center pe-3">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr *ngFor="let leave of filteredOverviewLeaves">
-                    <td class="ps-4">
-                      <div class="d-flex align-items-center">
-                        <div class="avatar-circle me-2">
-                          <span class="avatar-text">{{ leave.name.charAt(0) }}</span>
+                  <tr *ngFor="let leave of filteredOverviewLeaves" class="leave-request-row">
+                    <td class="ps-3">
+                      <div class="intern-info-wrapper">
+                        <div class="intern-avatar-wrapper shadow-sm">
+                          {{ getInitials(leave.name) }}
                         </div>
-                        <div class="fw-semibold">{{ leave.name }}</div>
+                        <div class="intern-details">
+                          <span class="intern-name">{{ leave.name }}</span>
+                          <span class="intern-email-sub">{{ leave.email || '-' }}</span>
+                        </div>
                       </div>
                     </td>
                     <td>
-                      <span class="badge bg-secondary-subtle text-secondary">{{ leave.department }}</span>
+                      <div class="d-flex flex-column">
+                        <span class="fw-bold text-navy small">{{ leave.department }}</span>
+                        <span class="text-muted smaller">{{ leave.field || '-' }}</span>
+                      </div>
                     </td>
-                    <td><small class="text-muted">{{ leave.field || '-' }}</small></td>
-                    <td><small class="fw-medium">{{ leave.startDate }}</small></td>
-                    <td><small class="fw-medium">{{ leave.endDate }}</small></td>
                     <td>
-                      <small class="text-truncate d-inline-block reason-text" [title]="leave.reason">
-                        {{ leave.reason }}
+                      <div class="d-flex flex-column">
+                        <span class="fw-semibold small text-dark">
+                          <i class="bi bi-calendar-event me-1 text-navy"></i>{{ leave.startDate }}
+                        </span>
+                        <span class="fw-semibold small text-muted">
+                          <i class="bi bi-arrow-right-short me-1"></i>{{ leave.endDate }}
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <small class="text-truncate d-inline-block reason-text" [title]="leave.reason"
+                        style="max-width: 150px;">
+                        {{ leave.reason || '-' }}
                       </small>
                     </td>
-                    <td class="text-center pe-4">
-                      <span class="badge rounded-pill px-3 py-1" [ngClass]="{
-                          'bg-success': leave.status === 'Approved',
-                          'bg-warning text-dark': leave.status === 'Pending',
-                          'bg-danger': leave.status === 'Declined'
-                        }">{{ leave.status }}
+                    <td class="text-center pe-3">
+                      <span class="status-badge-pill" [ngClass]="{
+                          'badge-approved': leave.status === 'Approved',
+                          'badge-pending': leave.status === 'Pending',
+                          'badge-declined': leave.status === 'Declined'
+                        }">
+                        <i class="bi" [ngClass]="{
+                            'bi-check-circle-fill': leave.status === 'Approved',
+                            'bi-clock-fill': leave.status === 'Pending',
+                            'bi-x-circle-fill': leave.status === 'Declined'
+                          }"></i>
+                        {{ leave.status }}
                       </span>
                     </td>
                   </tr>
                   <tr *ngIf="filteredOverviewLeaves.length === 0">
-                    <td colspan="7" class="text-center text-muted py-5">
+                    <td colspan="5" class="text-center text-muted py-5">
                       <i class="bi bi-calendar-x fs-1 d-block mb-2 opacity-25"></i>
                       <p class="mb-0">No leave requests found</p>
                     </td>
@@ -646,7 +336,7 @@
       </div>
 
       <!-- ===================== Manage Departments SECTION ===================== -->
-      <div *ngIf="activeSection === Section.Departments" class="departments-section">
+      <div *ngIf="activeSection === 'Manage Field'" class="departments-section">
         <!-- Section Header -->
         <div class="card shadow-sm border-0 rounded-4 mb-4 department-header-card">
           <div class="card-body p-4">
@@ -850,27 +540,31 @@
                     (keydown)="onSupervisorEmailKeyDown($event)" required>
                 </div>
                 <div class="col-12 col-md-6">
-                  <label class="form-label">Password <span class="text-navy">*</span></label>
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label class="form-label mb-0">Password <span class="text-navy">*</span></label>
+                    <button type="button" class="btn btn-sm btn-outline-navy py-0"
+                      (click)="generateSupervisorPassword(false)">
+                      <i class="bi bi-magic me-1"></i>Generate
+                    </button>
+                  </div>
                   <div class="input-group">
                     <input [type]="showCreateSupervisorPassword ? 'text' : 'password'" class="form-control"
                       [(ngModel)]="supervisorForm.password" name="supervisorPassword"
                       placeholder="Enter password (min 6 characters)" required>
-                    <button class="btn btn-outline-secondary" type="button"
-                      (click)="showCreateSupervisorPassword = !showCreateSupervisorPassword"
-                      title="{{ showCreateSupervisorPassword ? 'Hide password' : 'Show password' }}">
+                    <button class="btn btn-outline-secondary border-start-0" type="button"
+                      (click)="toggleCreateSupervisorPasswordVisibility()">
                       <i class="bi" [ngClass]="showCreateSupervisorPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
                     </button>
                   </div>
                 </div>
                 <div class="col-12 col-md-6">
-                  <label class="form-label">Confirm Password <span class="text-navy">*</span></label>
+                  <label class="form-label mt-1">Confirm Password <span class="text-navy">*</span></label>
                   <div class="input-group">
                     <input [type]="showCreateSupervisorConfirmPassword ? 'text' : 'password'" class="form-control"
                       [(ngModel)]="supervisorForm.confirmPassword" name="supervisorConfirmPassword"
                       placeholder="Confirm password" required>
-                    <button class="btn btn-outline-secondary" type="button"
-                      (click)="showCreateSupervisorConfirmPassword = !showCreateSupervisorConfirmPassword"
-                      title="{{ showCreateSupervisorConfirmPassword ? 'Hide password' : 'Show password' }}">
+                    <button class="btn btn-outline-secondary border-start-0" type="button"
+                      (click)="toggleCreateSupervisorConfirmPasswordVisibility()">
                       <i class="bi" [ngClass]="showCreateSupervisorConfirmPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
                     </button>
                   </div>
@@ -921,73 +615,6 @@
           </div>
         </div>
 
-        <!-- Invite Link Card -->
-        <div class="card shadow-lg border-0 rounded-4 mb-4" *ngIf="showInviteCard && newlyCreatedSupervisor">
-          <div class="card-header bg-navy text-white border-0 p-3">
-            <div class="d-flex justify-content-between align-items-center">
-              <h5 class="mb-0 text-white">
-                <i class="bi bi-envelope-check me-2"></i>{{ supervisorPassword ? 'Supervisor Created Successfully!' :
-                'Resend Login Credentials' }}
-              </h5>
-              <button class="btn btn-sm btn-outline-light" (click)="closeInviteCard()" title="Close invite card"
-                aria-label="Close invite card">
-                <i class="bi bi-x-lg"></i>
-              </button>
-            </div>
-          </div>
-          <div class="card-body p-4">
-            <div class="row align-items-center">
-              <div class="col-12 col-md-8">
-                <h6 class="fw-bold mb-3">
-                  <i class="bi bi-person-circle text-navy me-2"></i>
-                  {{ newlyCreatedSupervisor.name }}
-                </h6>
-                <p class="text-muted mb-3">
-                  <i class="bi bi-envelope me-2"></i>{{ newlyCreatedSupervisor.email }}
-                </p>
-                <div class="alert alert-info mb-3">
-                  <i class="bi bi-info-circle me-2"></i>
-                  <strong>Next Step:</strong> Customize the message below and send it to the new supervisor. The message
-                  includes their login credentials and invite link.
-                </div>
-
-                <div class="mb-3">
-                  <label class="form-label fw-semibold">
-                    <i class="bi bi-chat-left-text me-2"></i>Friendly Message
-                  </label>
-                  <textarea class="form-control" rows="8" [(ngModel)]="inviteMessage" name="inviteMessage"
-                    placeholder="Enter your message here..." title="Invite message" aria-label="Invite message"
-                    class="invite-message-textarea"></textarea>
-                  <small class="text-muted">You can edit this message. It will be sent along with the login
-                    credentials.</small>
-                </div>
-
-                <div class="input-group mb-3">
-                  <input type="text" class="form-control" [value]="inviteLink" readonly id="inviteLinkInput"
-                    placeholder="Invite link" title="Invite link">
-                  <button class="btn btn-outline-navy" (click)="copyInviteLink()" title="Copy invite link">
-                    <i class="bi bi-clipboard me-1"></i>Copy Link
-                  </button>
-                </div>
-              </div>
-              <div class="col-12 col-md-4 text-center">
-                <div class="d-flex flex-column gap-2">
-                  <button class="btn btn-navy w-100" (click)="sendInviteEmail()"
-                    [disabled]="isCreatingSupervisor || !inviteMessage.trim()">
-                    <i class="bi bi-envelope-paper me-2"></i>
-                    {{ isCreatingSupervisor ? 'Sending...' : 'Send via Email' }}
-                  </button>
-                  <button class="btn btn-outline-navy w-100" (click)="copyInviteLink()" title="Copy invite link">
-                    <i class="bi bi-clipboard me-2"></i>Copy Link Only
-                  </button>
-                  <button class="btn btn-outline-secondary w-100" (click)="closeInviteCard()">
-                    <i class="bi bi-x-circle me-2"></i>Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
         <!-- Recently Added Supervisors Not Logged In Log Card -->
         <div class="card shadow-sm border-0 mb-4 border-gold" *ngIf="supervisorsNotLoggedInBase.length > 0">
@@ -1376,12 +1003,138 @@
 
 
       <!-- ===================== INTERNS SECTION (With Filters & Pagination) ===================== -->
+
+      <!-- ===================== PENDING APPROVALS SECTION ===================== -->
+      <div *ngIf="activeSection === 'Pending Approvals'" class="section-animate pending-approvals-section">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h4 class="fw-bold text-navy mb-0">
+            <i class="bi bi-person-plus-fill me-2"></i>New Intern Registrations
+          </h4>
+          <div class="d-flex align-items-center gap-3">
+            <span class="badge bg-navy px-3 py-2">Total Pending: {{ pendingInterns.length }}</span>
+          </div>
+        </div>
+
+        <div class="card shadow-sm border-0 rounded-0">
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th class="ps-3">Name</th>
+                    <th>Email</th>
+                    <th>ID Number</th>
+                    <th>Department</th>
+                    <th>Field</th>
+                    <th>Registration Date</th>
+                    <th class="text-center pe-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let intern of pendingInterns" class="section-animate">
+                    <td class="ps-3 fw-semibold text-navy">{{ intern.name }}</td>
+                    <td><small class="text-muted">{{ intern.email }}</small></td>
+                    <td><small class="text-muted">{{ intern.idNumber || 'N/A' }}</small></td>
+                    <td><span class="badge bg-secondary-subtle text-secondary">{{ intern.department }}</span></td>
+                    <td><small>{{ intern.field }}</small></td>
+                    <td><small class="text-muted">{{ (intern.startDate | date:'yyyy-MM-dd') || 'N/A' }}</small></td>
+                    <td class="text-center pe-3">
+                      <div class="d-flex justify-content-center gap-2">
+                        <button
+                          class="btn btn-outline-info btn-sm d-flex align-items-center gap-1 px-3 rounded-pill shadow-sm"
+                          (click)="viewInternContract(intern)" title="View Contract Agreement">
+                          <i class="bi bi-file-earmark-text"></i> Contract
+                        </button>
+                        <button
+                          class="btn btn-success btn-sm d-flex align-items-center gap-1 px-3 rounded-pill shadow-sm"
+                          (click)="approveIntern(intern)">
+                          <i class="bi bi-person-check-fill"></i> Approve
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm d-flex align-items-center gap-1 px-3 rounded-pill"
+                          (click)="rejectIntern(intern)">
+                          <i class="bi bi-person-x-fill"></i> Reject
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr *ngIf="pendingInterns.length === 0">
+                    <td colspan="7" class="text-center text-muted py-5">
+                      <div class="py-4">
+                        <i class="bi bi-person-check fs-1 d-block mb-3 text-success opacity-50"></i>
+                        <h5 class="fw-bold text-dark">No Pending Registrations</h5>
+                        <p class="mb-0">All new interns have been processed.</p>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div *ngIf="activeSection === 'interns'" class="section-animate interns-section">
         <!-- Section Header -->
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4">
           <h4 class="fw-bold text-navy mb-3 mb-md-0">
             <i class="bi bi-people-fill me-2"></i>Interns Management
           </h4>
+          <div class="d-flex gap-2 mb-3 mb-md-0">
+            <button class="btn btn-navy rounded-5 px-3" (click)="openBulkImportModal()" title="Bulk Import Interns">
+              <i class="bi bi-file-earmark-spreadsheet me-1"></i> Bulk Import CSV
+            </button>
+          </div>
+        </div>
+
+        <!-- Recently Added Interns Not Logged In Card -->
+        <div class="card shadow-sm border-0 mb-4 border-gold" *ngIf="newlyCreatedInterns.length > 0">
+          <div class="card-header bg-gold-subtle border-0 p-3">
+            <div class="d-flex justify-content-between align-items-center">
+              <h5 class="mb-0 text-gold-emphasis">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>Pending Onboarding - Not Logged In
+              </h5>
+              <span class="badge bg-warning text-dark">{{ newlyCreatedInterns.length }}</span>
+            </div>
+          </div>
+          <div class="card-body p-4">
+            <div class="alert alert-warning mb-3">
+              <i class="bi bi-info-circle me-2"></i>
+              <strong>Note:</strong> The following interns have been added to the system but have not logged into their dashboard yet.
+            </div>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th class="ps-3">Name</th>
+                    <th>Email</th>
+                    <th>Department</th>
+                    <th>Field</th>
+                    <th>Supervisor</th>
+                    <th class="text-center">Status</th>
+                    <th class="text-center pe-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let intern of newlyCreatedInterns">
+                    <td class="ps-3 fw-semibold">{{ intern.name }}</td>
+                    <td><small class="text-muted">{{ intern.email }}</small></td>
+                    <td><span class="badge bg-navy-subtle text-navy">{{ intern.department || 'N/A' }}</span></td>
+                    <td><small>{{ intern.field || 'N/A' }}</small></td>
+                    <td>{{ intern.supervisor }}</td>
+                    <td class="text-center">
+                      <span class="badge bg-warning text-dark px-3 rounded-pill shadow-sm">Never Logged In</span>
+                    </td>
+                    <td class="text-center pe-3">
+                      <button class="btn btn-navy btn-sm d-flex align-items-center gap-1 mx-auto px-3 rounded-pill shadow-sm"
+                        (click)="resendInternInvite(intern)" title="Resend Invitation Email">
+                        <i class="bi bi-envelope-at-fill"></i> Resend Invite
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <!-- Filters Card -->
@@ -1426,7 +1179,7 @@
                   <option value="Present">Present</option>
                   <option value="Absent">Absent</option>
                   <option value="On Leave">On Leave</option>
-                  <option value="Inactive">Inactive</option>
+                  <option value="Inactive">Pending Approval / Inactive</option>
                 </select>
               </div>
               <div class="col-12 col-md-12 d-flex align-items-end">
@@ -1509,9 +1262,9 @@
                           'bg-navy': intern.status === 'Present' && intern.active !== false,
                           'bg-gold': intern.status === 'On Leave' && intern.active !== false,
                           'bg-muted': intern.status === 'Absent' && intern.active !== false,
-                          'bg-secondary': intern.active === false
+                          'bg-warning text-dark': intern.active === false
                         }">
-                        {{ intern.active === false ? 'Inactive' : intern.status }}
+                        {{ intern.active === false ? 'Pending Approval' : intern.status }}
                       </span>
                     </td>
                     <td class="text-center pe-3">
@@ -1521,13 +1274,18 @@
                           [disabled]="intern.active === false">
                           <i class="bi bi-pencil-square"></i>
                         </button>
+                        <button class="btn btn-outline-info btn-sm" (click)="viewInternContract(intern)"
+                          title="View Contract Agreement" aria-label="View Contract Agreement"
+                          [disabled]="intern.active === false">
+                          <i class="bi bi-file-earmark-text"></i>
+                        </button>
                         <button *ngIf="intern.active !== false" class="btn btn-outline-gold btn-sm rounded-end-pill"
                           (click)="deactivateIntern(intern)" title="Deactivate intern" aria-label="Deactivate intern">
                           <i class="bi bi-power"></i>
                         </button>
                         <button *ngIf="intern.active === false" class="btn btn-outline-success btn-sm rounded-end-pill"
-                          (click)="deactivateIntern(intern)" title="Activate intern" aria-label="Activate intern">
-                          <i class="bi bi-power"></i>
+                          (click)="deactivateIntern(intern)" title="Approve intern" aria-label="Approve intern">
+                          <i class="bi bi-person-check-fill"></i>
                         </button>
                       </div>
                     </td>
@@ -1578,20 +1336,6 @@
           <h4 class="fw-bold text-navy mb-3 mb-md-0">
             <i class="bi bi-calendar-check me-2"></i>Intern Leave Requests
           </h4>
-          <div class="d-flex gap-2 mb-3 mb-md-0">
-            <!-- Alert Management Buttons -->
-            <button class="btn btn-navy btn-sm rounded-5" (click)="testLeaveAlert()"
-              title="Check for new leave request alerts">
-              <i class="bi bi-bell me-1"></i>Check Alerts
-            </button>
-            <button class="btn btn-outline-secondary btn-sm rounded-5" (click)="clearSeenLeaveRequests()"
-              title="Clear seen requests to see alerts again">
-              <i class="bi bi-arrow-clockwise me-1"></i>Reset Seen
-            </button>
-            <button class="btn btn-navy btn-sm rounded-5" (click)="loadLeaveRequests()" title="Reload leave requests">
-              <i class="bi bi-arrow-repeat me-1"></i>Reload Data
-            </button>
-          </div>
           <div class="d-flex gap-2 mb-3 mb-md-0">
             <div *ngIf="clearedLeaveRequests.length > 0">
               <button class="btn btn-gold rounded-5" (click)="undoClear()">
@@ -1662,77 +1406,100 @@
           <div class="card shadow-sm border-0 leave-table-card">
             <div class="card-body p-0">
               <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0 leave-requests-table">
-                  <thead class="table-light">
+                <table class="table align-middle mb-0 leave-requests-table">
+                  <thead>
                     <tr>
                       <th class="ps-3">Intern</th>
-                      <th>Email</th>
-                      <th>Department</th>
-                      <th>Field</th>
-                      <th>Start Date</th>
-                      <th>End Date</th>
-                      <th>Reason</th>
+                      <th>Dept & Field</th>
+                      <th>Duration</th>
+                      <th>Reason & Docs</th>
                       <th class="text-center">Status</th>
-                      <th class="text-center">Documents</th>
-                      <th class="text-center pe-3">Actions</th>
+                      <th class="text-end pe-3">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr *ngFor="let request of paginatedLeaveRequests; let i = index" class="leave-request-row">
-                      <td class="ps-3 fw-semibold">{{ request.name }}</td>
-                      <td><small class="text-muted">{{ request.email }}</small></td>
-                      <td><span class="badge bg-secondary-subtle text-secondary">{{ request.department }}</span></td>
-                      <td><small>{{ request.field }}</small></td>
-                      <td><small>{{ request.startDate }}</small></td>
-                      <td><small>{{ request.endDate }}</small></td>
+                      <td class="ps-3">
+                        <div class="intern-info-wrapper">
+                          <div class="intern-avatar-wrapper shadow-sm">
+                            {{ getInitials(request.name) }}
+                          </div>
+                          <div class="intern-details">
+                            <span class="intern-name">{{ request.name }}</span>
+                            <span class="intern-email-sub">{{ request.email }}</span>
+                          </div>
+                        </div>
+                      </td>
                       <td>
-                        <small *ngIf="request.status === 'Declined' && request.reason"
-                          class="text-danger fw-semibold d-inline-block reason-text" [title]="request.reason">
-                          {{ request.reason }}
-                        </small>
-                        <small *ngIf="request.status !== 'Declined'" class="text-truncate d-inline-block reason-text"
-                          [title]="request.reason">
-                          {{ request.reason || '-' }}
-                        </small>
-                        <small *ngIf="request.status === 'Declined' && !request.reason" class="text-muted">-</small>
+                        <div class="d-flex flex-column">
+                          <span class="fw-bold text-navy small">{{ request.department }}</span>
+                          <span class="text-muted smaller">{{ request.field }}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div class="d-flex flex-column">
+                          <span class="fw-semibold small text-dark">
+                            <i class="bi bi-calendar-event me-1 text-navy"></i>{{ request.startDate }}
+                          </span>
+                          <span class="fw-semibold small text-muted">
+                            <i class="bi bi-arrow-right-short me-1"></i>{{ request.endDate }}
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        <div class="d-flex flex-column gap-1">
+                          <small class="text-truncate d-inline-block reason-text" [title]="request.reason"
+                            style="max-width: 150px;">
+                            {{ request.reason || '-' }}
+                          </small>
+                          <div *ngIf="request.document">
+                            <button (click)="downloadAttachment(request.document)"
+                              class="btn btn-link p-0 smaller text-navy text-decoration-none" title="Download document">
+                              <i class="bi bi-file-earmark-arrow-down me-1"></i>View Attachment
+                            </button>
+                          </div>
+                        </div>
                       </td>
                       <td class="text-center">
-                        <span class="badge rounded-pill px-3 py-1" [ngClass]="{
-                            'bg-success': request.status === 'Approved',
-                            'bg-warning text-dark': request.status === 'Pending',
-                            'bg-danger': request.status === 'Declined'
-                          }">{{ request.status }}</span>
+                        <span class="status-badge-pill" [ngClass]="{
+                          'badge-approved': request.status === 'Approved',
+                          'badge-pending': request.status === 'Pending',
+                          'badge-declined': request.status === 'Declined'
+                        }">
+                          <i class="bi" [ngClass]="{
+                            'bi-check-circle-fill': request.status === 'Approved',
+                            'bi-clock-fill': request.status === 'Pending',
+                            'bi-x-circle-fill': request.status === 'Declined'
+                          }"></i>
+                          {{ request.status }}
+                        </span>
                       </td>
-                      <td class="text-center">
-                        <button *ngIf="request.document" (click)="downloadAttachment(request.document)"
-                          class="btn btn-navy btn-sm rounded-pill" title="Download document">
-                          <i class="bi bi-download"></i>
-                        </button>
-                        <span *ngIf="!request.document" class="text-muted">-</span>
-                      </td>
-                      <td class="text-center pe-3">
-                        <div class="btn-group" role="group">
-                          <button class="btn btn-navy btn-sm rounded-start-pill" (click)="approveRequest(request)"
-                            title="Approve request">
-                            <i class="bi bi-check-circle"></i>
+                      <td class="pe-3">
+                        <div class="action-btn-group justify-content-end">
+                          <button class="btn btn-circle-action btn-success-subtle shadow-sm"
+                            (click)="approveRequest(request)" *ngIf="request.status === 'Pending'"
+                            title="Approve Request">
+                            <i class="bi bi-check2"></i>
                           </button>
-                          <button class="btn btn-gold btn-sm rounded-0" (click)="declineRequest(request)"
-                            title="Decline request">
-                            <i class="bi bi-x-circle"></i>
+                          <button class="btn btn-circle-action btn-danger-subtle shadow-sm"
+                            (click)="declineRequest(request)" *ngIf="request.status === 'Pending'"
+                            title="Decline Request">
+                            <i class="bi bi-x-lg"></i>
                           </button>
-                          <button class="btn btn-outline-secondary btn-sm rounded-end-pill"
-                            (click)="clearLeaveRequestByRequest(request)" title="Clear request">
+                          <button class="btn btn-circle-action btn-secondary-subtle shadow-sm"
+                            (click)="clearLeaveRequestByRequest(request)" title="Clear Request">
                             <i class="bi bi-trash"></i>
                           </button>
                         </div>
                       </td>
                     </tr>
                     <tr *ngIf="filteredLeaveRequests.length === 0 && paginatedLeaveRequests.length === 0">
-                      <td colspan="10" class="text-center text-muted py-5">
-                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-                        <p class="mb-0">No leave requests found.</p>
-                        <small class="text-muted d-block mt-2">Total requests: {{ leaveRequests.length }} | Filtered: {{
-                          filteredLeaveRequests.length }}</small>
+                      <td colspan="6" class="text-center text-muted py-5">
+                        <div class="empty-state-icon-wrapper mb-3">
+                          <i class="bi bi-inbox fs-2 text-muted"></i>
+                        </div>
+                        <p class="mb-0 fw-semibold">No leave requests found</p>
+                        <small class="text-muted">Adjust your filters to find what you're looking for</small>
                       </td>
                     </tr>
                   </tbody>
@@ -1744,72 +1511,70 @@
         <!-- Mobile/Tablet Card View (visible on smaller screens) -->
         <div class="d-block d-lg-none">
           <div *ngFor="let request of paginatedLeaveRequests; let i = index" class="mb-3">
-            <div class="card shadow-sm border-0 leave-request-card">
-              <div class="card-body p-3">
-                <!-- Header with Name and Status -->
-                <div class="d-flex justify-content-between align-items-start mb-3">
-                  <div class="flex-grow-1">
-                    <h6 class="fw-bold mb-1">{{ request.name }}</h6>
-                    <small class="text-muted d-block">{{ request.email }}</small>
+            <div class="card shadow-sm border-0 modernized-leave-card overflow-hidden">
+              <div class="card-body p-0">
+                <!-- Card Header with Avatar & Status -->
+                <div class="p-3 bg-light d-flex justify-content-between align-items-center border-bottom">
+                  <div class="intern-info-wrapper">
+                    <div class="intern-avatar-wrapper shadow-sm" style="width: 32px; height: 32px; font-size: 0.75rem;">
+                      {{ getInitials(request.name) }}
+                    </div>
+                    <span class="intern-name small">{{ request.name }}</span>
                   </div>
-                  <span class="badge rounded-pill px-3 py-2" [ngClass]="{
-                    'bg-success': request.status === 'Approved',
-                    'bg-warning text-dark': request.status === 'Pending',
-                    'bg-danger': request.status === 'Declined'
-                  }">{{ request.status }}</span>
+                  <span class="status-badge-pill" [ngClass]="{
+                    'badge-approved': request.status === 'Approved',
+                    'badge-pending': request.status === 'Pending',
+                    'badge-declined': request.status === 'Declined'
+                  }" style="padding: 4px 10px; font-size: 0.65rem;">
+                    {{ request.status }}
+                  </span>
                 </div>
 
-                <!-- Details Grid -->
-                <div class="row g-2 mb-3">
-                  <div class="col-6">
-                    <small class="text-muted d-block">Department</small>
-                    <span class="badge bg-secondary-subtle text-secondary">{{ request.department }}</span>
+                <div class="p-3">
+                  <!-- Details Row -->
+                  <div class="row g-2 mb-3">
+                    <div class="col-6">
+                      <small class="text-muted d-block smaller">Department</small>
+                      <span class="fw-bold text-navy small">{{ request.department }}</span>
+                    </div>
+                    <div class="col-6 text-end">
+                      <small class="text-muted d-block smaller">Duration</small>
+                      <span class="fw-semibold small">{{ request.startDate }} to {{ request.endDate }}</span>
+                    </div>
                   </div>
-                  <div class="col-6">
-                    <small class="text-muted d-block">Field</small>
-                    <small class="fw-medium">{{ request.field }}</small>
-                  </div>
-                  <div class="col-6">
-                    <small class="text-muted d-block">Start Date</small>
-                    <small class="fw-medium">{{ request.startDate }}</small>
-                  </div>
-                  <div class="col-6">
-                    <small class="text-muted d-block">End Date</small>
-                    <small class="fw-medium">{{ request.endDate }}</small>
-                  </div>
-                  <div class="col-12">
-                    <small class="text-muted d-block mb-1">Reason</small>
-                    <p *ngIf="request.status === 'Declined' && request.reason"
-                      class="mb-0 small text-danger fw-semibold">
-                      <i class="bi bi-exclamation-circle me-1"></i>{{ request.reason }}
+
+                  <!-- Reason Row -->
+                  <div class="mb-3">
+                    <small class="text-muted d-block smaller mb-1">Reason</small>
+                    <p class="mb-0 small text-dark p-2 bg-light rounded shadow-none border-0"
+                      style="font-style: italic;">
+                      "{{ request.reason || 'No reason provided' }}"
                     </p>
-                    <p *ngIf="request.status !== 'Declined'" class="mb-0 small">
-                      {{ request.reason || '-' }}
-                    </p>
-                    <p *ngIf="request.status === 'Declined' && !request.reason" class="mb-0 small text-muted">-</p>
                   </div>
-                </div>
 
-                <!-- Document Link -->
-                <div *ngIf="request.document" class="mb-3">
-                  <a [href]="request.document" target="_blank" class="btn btn-navy btn-sm w-100 rounded-pill">
-                    <i class="bi bi-paperclip me-1"></i>View Document
-                  </a>
-                </div>
-
-                <!-- Action Buttons -->
-                <div class="d-grid gap-2">
-                  <div class="btn-group w-100" role="group">
-                    <button class="btn btn-navy btn-sm flex-fill" (click)="approveRequest(request)">
-                      <i class="bi bi-check-circle me-1"></i>Approve
-                    </button>
-                    <button class="btn btn-gold btn-sm flex-fill" (click)="declineRequest(request)">
-                      <i class="bi bi-x-circle me-1"></i>Decline
-                    </button>
+                  <!-- Actions Row -->
+                  <div class="d-flex justify-content-between align-items-center pt-2 border-top gap-2">
+                    <div class="d-flex gap-2">
+                      <button *ngIf="request.document" (click)="downloadAttachment(request.document)"
+                        class="btn btn-navy-subtle btn-sm rounded-pill px-3" style="font-size: 0.7rem;">
+                        <i class="bi bi-file-earmark-text me-1"></i>View Doc
+                      </button>
+                    </div>
+                    <div class="action-btn-group">
+                      <button class="btn btn-circle-action btn-success-subtle btn-sm shadow-sm"
+                        (click)="approveRequest(request)" *ngIf="request.status === 'Pending'" title="Approve">
+                        <i class="bi bi-check2"></i>
+                      </button>
+                      <button class="btn btn-circle-action btn-danger-subtle btn-sm shadow-sm"
+                        (click)="declineRequest(request)" *ngIf="request.status === 'Pending'" title="Decline">
+                        <i class="bi bi-x-lg"></i>
+                      </button>
+                      <button class="btn btn-circle-action btn-secondary-subtle btn-sm shadow-sm"
+                        (click)="clearLeaveRequestByRequest(request)" title="Clear">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </div>
                   </div>
-                  <button class="btn btn-outline-secondary btn-sm w-100" (click)="clearLeaveRequestByRequest(request)">
-                    <i class="bi bi-trash me-1"></i>Clear
-                  </button>
                 </div>
               </div>
             </div>
@@ -2492,21 +2257,29 @@
         </div>
       </div>
 
-      <!-- ===================== LOCATIONS SECTION ===================== -->
       <div *ngIf="activeSection === 'Locations'" class="section-animate locations-section">
         <!-- Section Header -->
-        <div class="card shadow-lg border-0 rounded-4 mb-4">
-          <div class="card-header bg-navy text-white border-0 rounded-top-4">
-            <div class="d-flex justify-content-between align-items-center">
-              <div>
-                <h4 class="fw-bold mb-1">
-                  <i class="bi bi-geo-alt-fill me-2"></i>Manage Sign-in Locations
-                </h4>
-                <p class="mb-0 small opacity-75">Click on the map to add new locations where interns can sign in</p>
+        <div class="card shadow-sm border-0 rounded-4 mb-4 location-header-card">
+          <div class="card-body p-4">
+            <div class="row align-items-center">
+              <div class="col-12 col-md-8">
+                <div class="d-flex align-items-center mb-2">
+                  <div class="header-icon-wrapper bg-navy me-3">
+                    <i class="bi bi-geo-alt-fill text-white"></i>
+                  </div>
+                  <div>
+                    <h3 class="fw-bold mb-1 text-navy">Campus Locations</h3>
+                    <p class="text-muted mb-0 small">
+                      <i class="bi bi-info-circle me-1"></i>Manage geofenced sign-in zones for interns
+                    </p>
+                  </div>
+                </div>
               </div>
-              <span class="badge bg-gold text-navy px-3 py-2">
-                {{ locations.length }} Location{{ locations.length !== 1 ? 's' : '' }}
-              </span>
+              <div class="col-12 col-md-4 text-md-end mt-3 mt-md-0">
+                <span class="badge bg-navy text-white px-3 py-2 fs-6 rounded-pill shadow-sm">
+                  <i class="bi bi-pin-map-fill me-1"></i>{{ locations.length }} Active Zones
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -2519,21 +2292,24 @@
               <div class="card-header bg-white border-0 pb-0 pt-4 px-4">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                   <h5 class="fw-bold text-navy mb-0">
-                    <i class="bi bi-map me-2"></i>University of Venda Campus Map
+                    <i class="bi bi-map-fill me-2"></i>Campus Geofence Map
                   </h5>
-                  <button type="button" class="btn btn-outline-navy btn-sm" (click)="refreshMap()" title="Refresh Map"
+                  <button type="button" class="btn btn-navy btn-sm rounded-pill px-3" (click)="refreshMap()"
                     [disabled]="!isMapReady">
-                    <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                    <i class="bi bi-arrow-clockwise me-1"></i>Refresh Map
                   </button>
                 </div>
-                <div class="alert alert-info mb-0">
-                  <i class="bi bi-info-circle me-2"></i>
-                  <strong>Instructions:</strong> Click anywhere on the map to add a new sign-in location. Each location
-                  will have a radius (in meters) where interns can sign in.
-                </div>
-                <div class="alert alert-warning mt-2 mb-0" *ngIf="!isMapReady">
-                  <i class="bi bi-hourglass-split me-2"></i>
-                  <strong>Loading map...</strong> Please wait while the map loads.
+                <div class="map-instruction-alert mb-3">
+                  <div class="d-flex align-items-center">
+                    <div class="alert-icon-circle bg-info-subtle text-info me-3">
+                      <i class="bi bi-lightbulb-fill"></i>
+                    </div>
+                    <div>
+                      <p class="mb-0 fw-medium small text-dark">Quick Guide</p>
+                      <p class="mb-0 text-muted smaller">Click anywhere on the map to define a new sign-in zone. Interns
+                        must be within the specified radius to clock in.</p>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="card-body p-0">
@@ -2562,40 +2338,50 @@
               <div class="card-body p-4">
                 <!-- Empty State -->
                 <div *ngIf="locations.length === 0" class="text-center py-5">
-                  <i class="bi bi-geo-alt locations-empty-icon"></i>
-                  <p class="text-muted mt-3 mb-0">No locations added yet</p>
-                  <p class="text-muted small">Click on the map to add your first location</p>
+                  <div class="empty-state-icon-wrapper mb-3">
+                    <i class="bi bi-geo-alt locations-empty-icon"></i>
+                  </div>
+                  <h6 class="fw-bold text-muted mb-2">No Zones Defined</h6>
+                  <p class="text-muted smaller mb-0">Use the map to initialize sign-in<br>locations for the campus.</p>
                 </div>
 
                 <!-- Locations List -->
-                <div *ngIf="locations.length > 0" class="locations-list">
-                  <div *ngFor="let location of locations" class="location-item mb-3">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                      <div class="flex-grow-1">
-                        <h6 class="fw-bold text-dark mb-1">
-                          <i class="bi bi-geo-alt-fill text-navy me-2"></i>{{ location.name }}
-                        </h6>
-                        <p class="text-muted small mb-1" *ngIf="location.description">{{ location.description }}</p>
-                        <div class="d-flex flex-wrap gap-2">
-                          <span class="badge bg-info-subtle text-info">
-                            <i class="bi bi-rulers me-1"></i>{{ location.radius }}m radius
-                          </span>
-                          <span class="badge bg-secondary-subtle text-secondary">
-                            <i class="bi bi-geo me-1"></i>{{ location.latitude.toFixed(4) }}, {{
-                            location.longitude.toFixed(4) }}
-                          </span>
+                <div *ngIf="locations.length > 0" class="locations-list-wrapper">
+                  <div *ngFor="let loc of locations" class="location-card-item mb-3">
+                    <div class="card border-0 shadow-sm h-100 modernized-location-card">
+                      <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                          <div class="flex-grow-1">
+                            <h6 class="fw-bold text-navy mb-1 d-flex align-items-center">
+                              <span class="location-dot bg-navy me-2"></span>{{ loc.name }}
+                            </h6>
+                            <p class="text-muted smaller mb-2 text-truncate-2" *ngIf="loc.description">{{
+                              loc.description }}</p>
+                            <div class="d-flex flex-wrap gap-2 mb-3">
+                              <span class="badge badge-premium-light">
+                                <i class="bi bi-bullseye me-1"></i>{{ loc.radius }}m
+                              </span>
+                              <span class="badge badge-premium-dark">
+                                <i class="bi bi-geo-fill me-1"></i>{{ loc.latitude.toFixed(3) }}, {{
+                                loc.longitude.toFixed(3) }}
+                              </span>
+                              <span class="badge badge-premium-gold" *ngIf="loc.allowedStartTime">
+                                <i class="bi bi-clock-fill me-1"></i>Sign-in from {{ loc.allowedStartTime }}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="d-flex gap-2 action-buttons">
+                          <button class="btn btn-modern-action flex-grow-1" (click)="editLocation(loc)"
+                            title="Edit location">
+                            <i class="bi bi-pencil-square me-2"></i>Edit
+                          </button>
+                          <button class="btn btn-modern-danger" (click)="deleteLocation(loc)"
+                            title="Delete location">
+                            <i class="bi bi-trash3-fill"></i>
+                          </button>
                         </div>
                       </div>
-                    </div>
-                    <div class="d-flex gap-2">
-                      <button class="btn btn-sm btn-outline-primary flex-grow-1" (click)="editLocation(location)"
-                        title="Edit location">
-                        <i class="bi bi-pencil-fill me-1"></i> Edit
-                      </button>
-                      <button class="btn btn-sm btn-outline-danger" (click)="deleteLocation(location)"
-                        title="Delete location">
-                        <i class="bi bi-trash-fill"></i>
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -2664,14 +2450,19 @@
               <small class="text-muted">Select a field for this supervisor, or "No Field" to remove assignment.</small>
             </div>
             <div class="mb-3">
-              <label class="form-label">New Password</label>
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <label class="form-label mb-0">New Password</label>
+                <button type="button" class="btn btn-sm btn-outline-navy py-0"
+                  (click)="generateSupervisorPassword(true)">
+                  <i class="bi bi-magic me-1"></i>Generate
+                </button>
+              </div>
               <div class="input-group">
-                <input type="{{ showEditSupervisorPassword ? 'text' : 'password' }}" class="form-control"
+                <input [type]="showEditSupervisorPassword ? 'text' : 'password'" class="form-control"
                   [(ngModel)]="editSupervisorForm.password" name="editSupervisorPassword"
                   placeholder="Leave blank to keep current password">
-                <button class="btn btn-outline-secondary" type="button"
-                  (click)="showEditSupervisorPassword = !showEditSupervisorPassword"
-                  title="{{ showEditSupervisorPassword ? 'Hide password' : 'Show password' }}">
+                <button class="btn btn-outline-secondary border-start-0" type="button"
+                  (click)="toggleEditSupervisorPasswordVisibility()">
                   <i class="bi" [ngClass]="showEditSupervisorPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
                 </button>
               </div>
@@ -2681,12 +2472,11 @@
             <div class="mb-3">
               <label class="form-label">Confirm New Password</label>
               <div class="input-group">
-                <input type="{{ showEditSupervisorConfirmPassword ? 'text' : 'password' }}" class="form-control"
+                <input [type]="showEditSupervisorConfirmPassword ? 'text' : 'password'" class="form-control"
                   [(ngModel)]="editSupervisorForm.confirmPassword" name="editSupervisorConfirmPassword"
                   placeholder="Confirm new password">
-                <button class="btn btn-outline-secondary" type="button"
-                  (click)="showEditSupervisorConfirmPassword = !showEditSupervisorConfirmPassword"
-                  title="{{ showEditSupervisorConfirmPassword ? 'Hide password' : 'Show password' }}">
+                <button class="btn btn-outline-secondary border-start-0" type="button"
+                  (click)="toggleEditSupervisorConfirmPasswordVisibility()">
                   <i class="bi" [ngClass]="showEditSupervisorConfirmPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
                 </button>
               </div>
@@ -2726,10 +2516,16 @@
             <div class="row g-3">
               <div class="col-md-6">
                 <div class="mb-3">
-                  <label class="form-label">Name <span class="text-danger">*</span></label>
+                  <label class="form-label">Name <span class="text-navy">*</span></label>
                   <input type="text" class="form-control" [(ngModel)]="editInternForm.name" name="editInternName"
-                    placeholder="Enter intern name" disabled>
-                  <small class="text-muted">Name cannot be changed</small>
+                    placeholder="Enter intern name">
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="mb-3">
+                  <label class="form-label">Surname <span class="text-navy">*</span></label>
+                  <input type="text" class="form-control" [(ngModel)]="editInternForm.surname" name="editInternSurname"
+                    placeholder="Enter intern surname">
                 </div>
               </div>
               <div class="col-md-6">
@@ -2850,10 +2646,641 @@
   </div>
   <div class="modal-backdrop fade" [class.show]="selectedSignature" *ngIf="selectedSignature"
     (click)="closeSignatureModal()"></div>
+  <div class="modal fade" id="adminModal" tabindex="-1" aria-labelledby="adminModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+      <div class="modal-content border-0 shadow-lg rounded-0 overflow-hidden">
+
+        <div class="modal-header bg-navy text-white">
+          <h5 class="modal-title" id="adminModalLabel">
+            <i class="bi bi-person-badge-fill me-2"></i>{{ selectedStat?.label }}
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+
+        <!-- ===== MODAL BODY ===== -->
+        <div class="modal-body bg-light py-4">
+
+          <!-- ===== DEFAULT VIEW ===== -->
+          <div
+            *ngIf="selectedStat?.label !== 'Absent' && selectedStat?.label !== 'On Leave' && selectedStat?.label !== 'Present Today' && selectedStat?.label !== 'Total Interns'; else leaveOrAbsentTable"
+            class="text-center">
+            <div class="fs-1 text-{{ selectedStat?.color }}">
+              <i [class]="selectedStat?.icon"></i>
+            </div>
+            <h4 class="fw-bold mt-3">{{ selectedStat?.label }}</h4>
+            <p class="display-6 fw-bold text-{{ selectedStat?.color }}">{{ selectedStat?.value }}</p>
+          </div>
+
+          <!-- ================= LEAVE / ABSENT / PRESENT MODAL ================= -->
+
+
+          <ng-template #leaveOrAbsentTable>
+
+            <!-- On Leave Section -->
+            <ng-container *ngIf="selectedStat?.label === 'On Leave'">
+              <ng-container *ngTemplateOutlet="onLeaveTemplate"></ng-container>
+            </ng-container>
+
+            <!-- Absent Section -->
+            <ng-container *ngIf="selectedStat?.label === 'Absent'">
+              <ng-container *ngTemplateOutlet="absentTemplate"></ng-container>
+            </ng-container>
+
+            <!-- Present Today Section -->
+            <ng-container *ngIf="selectedStat?.label === 'Present Today'">
+              <ng-container *ngTemplateOutlet="presentTemplate"></ng-container>
+            </ng-container>
+
+            <!-- Total Interns Section -->
+            <ng-container *ngIf="selectedStat?.label === 'Total Interns'">
+              <ng-container *ngTemplateOutlet="totalInternsTemplate"></ng-container>
+            </ng-container>
+
+          </ng-template>
+
+          <!-- ================= ON LEAVE TEMPLATE ================= -->
+          <ng-template #onLeaveTemplate>
+            <div class="card shadow-sm border-0 rounded-0 p-3">
+              <h5 class="text-warning fw-bold mb-3">
+                <i class="bi bi-calendar-check me-2"></i>Interns Currently On Leave
+              </h5>
+
+              <!-- Filters -->
+              <div class="row g-3 align-items-end mb-3">
+                <div class="col-12 col-md-4">
+                  <label class="form-label fw-medium">Intern Name</label>
+                  <input type="text" class="form-control" placeholder="Search by name..." [(ngModel)]="filterName" />
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label fw-medium">Department</label>
+                  <select class="form-select" [(ngModel)]="filterDepartment"
+                    (change)="filteredFields = filterDepartment ? fieldMap[filterDepartment] : []; filterField = ''; currentPage = 1">
+                    <option value="">All</option>
+                    <option *ngFor="let dept of departmentList" [value]="dept">{{ dept }}</option>
+                  </select>
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label fw-medium">Field</label>
+                  <select class="form-select" [(ngModel)]="filterField" (change)="currentPage = 1">
+                    <option value="">All</option>
+                    <option *ngFor="let field of filteredFields" [value]="field">{{ field }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Table -->
+              <div class="table-responsive">
+                <table class="table table-hover align-middle text-center">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Intern Name</th>
+                      <th>Email</th>
+                      <th>Department</th>
+                      <th>Field</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let intern of paginatedLeaves">
+                      <td>{{ intern.name }}</td>
+                      <td>{{ intern.email }}</td>
+                      <td>{{ intern.department }}</td>
+                      <td>{{ intern.field }}</td>
+                      <td>
+                        <span class="badge rounded-0 bg-warning text-dark">On Leave</span>
+                      </td>
+                    </tr>
+                    <tr *ngIf="paginatedLeaves.length === 0">
+                      <td colspan="7" class="text-muted text-center">No leave records found.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Pagination -->
+              <div class="d-flex justify-content-between align-items-center mt-2">
+                <button class="btn btn-outline-navy rounded-5" [disabled]="currentPage === 1" (click)="prevPage()">
+                  <i class="bi bi-arrow-left-circle me-1"></i> Previous
+                </button>
+                <span class="fw-semibold text-muted">Page {{ currentPage }} of {{ totalPages }}</span>
+                <button class="btn btn-outline-navy rounded-5" [disabled]="currentPage === totalPages"
+                  (click)="nextPage()">
+                  Next <i class="bi bi-arrow-right-circle ms-1"></i>
+                </button>
+              </div>
+            </div>
+          </ng-template>
+
+          <!-- ================= ABSENT TEMPLATE ================= -->
+          <ng-template #absentTemplate>
+            <div class="card shadow-sm border-0 rounded-0 p-3">
+              <h5 class="text-danger fw-bold mb-3">
+                <i class="bi bi-x-circle me-2"></i>Interns Currently Absent
+              </h5>
+
+              <!-- Filters -->
+              <div class="row g-3 align-items-end mb-3">
+                <div class="col-12 col-md-4">
+                  <label class="form-label fw-medium">Intern Name</label>
+                  <input type="text" class="form-control" placeholder="Search by name..."
+                    [(ngModel)]="attendanceFilterName" />
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label fw-medium">Department</label>
+                  <select class="form-select" [(ngModel)]="attendanceFilterDepartment"
+                    (change)="updateAttendanceFields()">
+                    <option value="">All</option>
+                    <option *ngFor="let dept of departmentList" [value]="dept">{{ dept }}</option>
+                  </select>
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label fw-medium">Field</label>
+                  <select class="form-select" [(ngModel)]="attendanceFilterField">
+                    <option value="">All</option>
+                    <option *ngFor="let field of filteredAttendanceFields" [value]="field">{{ field }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Table -->
+              <div class="table-responsive">
+                <table class="table table-hover align-middle text-center">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Intern Name</th>
+                      <th>Email</th>
+                      <th>Department</th>
+                      <th>Field</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let data of paginatedAbsentInterns">
+                      <td>{{ data.name }}</td>
+                      <td>{{ data.email }}</td>
+                      <td>{{ data.department }}</td>
+                      <td>{{ data.field }}</td>
+                      <td><span class="badge bg-danger rounded-0">Absent</span></td>
+                    </tr>
+                    <tr *ngIf="paginatedAttendance.length === 0">
+                      <td colspan="7" class="text-center text-muted">No attendance records found.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Pagination -->
+              <div class="d-flex justify-content-between align-items-center mt-2">
+                <button class="btn btn-outline-navy rounded-5" [disabled]="attendancePage === 1"
+                  (click)="prevAttendancePage()">
+                  <i class="bi bi-arrow-left-circle me-1"></i> Previous
+                </button>
+                <span class="fw-semibold text-muted">Page {{ attendancePage }} of {{ totalAbsentPages }}</span>
+                <button class="btn btn-outline-navy rounded-5" [disabled]="attendancePage === totalAbsentPages"
+                  (click)="nextAttendancePage()">
+                  Next <i class="bi bi-arrow-right-circle ms-1"></i>
+                </button>
+              </div>
+            </div>
+          </ng-template>
+
+          <!-- ================= PRESENT TODAY TEMPLATE ================= -->
+          <ng-template #presentTemplate>
+            <div class="card shadow-sm border-0 rounded-0 p-3">
+              <h5 class="text-success fw-bold mb-3">
+                <i class="bi bi-graph-up-arrow me-2"></i>Present Interns Today
+              </h5>
+
+              <!-- Filters -->
+              <div class="row g-3 align-items-end mb-3">
+                <div class="col-12 col-md-4">
+                  <label class="form-label fw-medium">Intern Name</label>
+                  <input type="text" class="form-control" placeholder="Search by name..."
+                    [(ngModel)]="presentFilterName" />
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label fw-medium">Department</label>
+                  <select class="form-select" [(ngModel)]="presentFilterDepartment" (change)="updatePresentFields()">
+                    <option value="">All Departments</option>
+                    <option *ngFor="let dept of departmentList" [value]="dept">{{ dept }}</option>
+                  </select>
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label fw-medium">Field</label>
+                  <select class="form-select" [(ngModel)]="presentFilterField">
+                    <option value="">All Fields</option>
+                    <option *ngFor="let field of filteredPresentFields" [value]="field">{{ field }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Table -->
+              <div class="table-responsive">
+                <table class="table table-hover align-middle text-center">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Department</th>
+                      <th>Field</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let intern of paginatedPresentInterns">
+                      <td>{{ intern.name }}</td>
+                      <td>{{ intern.department }}</td>
+                      <td>{{ intern.field }}</td>
+                      <td>
+                        <span class="badge rounded-0 bg-success" *ngIf="intern.status === 'Present'">Present</span>
+                      </td>
+                    </tr>
+                    <tr *ngIf="paginatedPresentInterns.length === 0">
+                      <td colspan="4" class="text-muted text-center">No interns found.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Pagination -->
+              <div class="d-flex justify-content-between align-items-center mt-3">
+                <button class="btn btn-outline-navy rounded-5" [disabled]="presentPage === 1"
+                  (click)="prevPresentPage()">
+                  <i class="bi bi-arrow-left-circle me-1"></i> Previous
+                </button>
+                <span class="fw-semibold text-muted">Page {{ presentPage }} of {{ totalPresentPages }}</span>
+                <button class="btn btn-outline-navy rounded-5" [disabled]="presentPage === totalPresentPages"
+                  (click)="nextPresentPage()">
+                  Next <i class="bi bi-arrow-right-circle ms-1"></i>
+                </button>
+              </div>
+            </div>
+          </ng-template>
+
+          <!-- ================= TOTAL INTERNS TEMPLATE ================= -->
+          <ng-template #totalInternsTemplate>
+            <div class="card shadow-sm border-0 rounded-0 p-3">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="text-primary fw-bold mb-0">
+                  <i class="bi bi-people-fill me-2"></i>All Active Interns
+                </h5>
+                <button class="btn btn-sm btn-outline-primary" (click)="activeSection = 'interns'"
+                  data-bs-dismiss="modal">
+                  <i class="bi bi-box-arrow-up-right me-1"></i>Go to Full Section
+                </button>
+              </div>
+
+              <!-- Filters -->
+              <div class="row g-3 align-items-end mb-3">
+                <div class="col-12 col-md-4">
+                  <label class="form-label fw-medium">Search</label>
+                  <input type="text" class="form-control" placeholder="Search by name or email..."
+                    [(ngModel)]="internSearch" (ngModelChange)="totalInternsPage = 1" />
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label fw-medium">Department</label>
+                  <select class="form-select" [(ngModel)]="internFilterDepartment"
+                    (change)="updateFilteredInterns(); totalInternsPage = 1">
+                    <option value="">All Departments</option>
+                    <option *ngFor="let dept of departmentList" [value]="dept">{{ dept }}</option>
+                  </select>
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label fw-medium">Field</label>
+                  <select class="form-select" [(ngModel)]="internFilterField" (change)="totalInternsPage = 1">
+                    <option value="">All Fields</option>
+                    <option *ngFor="let field of filteredFieldsForInterns" [value]="field">{{ field }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Table -->
+              <div class="table-responsive">
+                <table class="table table-hover align-middle text-center">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Department</th>
+                      <th>Field</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let intern of paginatedTotalInternsModal">
+                      <td>{{ intern.name }}</td>
+                      <td>{{ intern.email }}</td>
+                      <td>{{ intern.department }}</td>
+                      <td>{{ intern.field }}</td>
+                      <td>
+                        <span class="badge rounded-0" [ngClass]="{
+                                'bg-success': intern.status === 'Present',
+                                'bg-warning text-dark': intern.status === 'On Leave',
+                                'bg-danger': intern.status === 'Absent',
+                                'bg-secondary': intern.status === 'Not Signed Out'
+                              }">{{ intern.status }}</span>
+                      </td>
+                    </tr>
+                    <tr *ngIf="paginatedTotalInternsModal.length === 0">
+                      <td colspan="5" class="text-muted text-center">No interns found.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Pagination -->
+              <div class="d-flex justify-content-between align-items-center mt-3">
+                <button class="btn btn-outline-navy rounded-5" [disabled]="totalInternsPage === 1"
+                  (click)="prevTotalInternsPage()">
+                  <i class="bi bi-arrow-left-circle me-1"></i> Previous
+                </button>
+                <span class="fw-semibold text-muted">Page {{ totalInternsPage }} of {{ totalInternsModalPages }}</span>
+                <button class="btn btn-outline-navy rounded-5" [disabled]="totalInternsPage === totalInternsModalPages"
+                  (click)="nextTotalInternsPage()">
+                  Next <i class="bi bi-arrow-right-circle ms-1"></i>
+                </button>
+              </div>
+            </div>
+          </ng-template>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk Intern Invitation Modal (Appears after successful import) -->
+  <div class="modal fade modern-success-modal" [class.show]="showBulkInternInviteCard" 
+    [ngStyle]="{'display': showBulkInternInviteCard ? 'block' : 'none', 'background-color': showBulkInternInviteCard ? 'rgba(0,0,0,0.5)' : 'transparent'}"
+    tabindex="-1" aria-labelledby="bulkInternInviteModalLabel" *ngIf="showBulkInternInviteCard">
+    <div class="modal-dialog modal-dialog-centered modal-lg animate__animated animate__zoomIn">
+      <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+        <div class="modal-header bg-navy text-white py-3 border-0">
+          <h5 class="modal-title fw-bold" id="bulkInternInviteModalLabel">
+            <i class="bi bi-check-circle-fill me-2"></i>Bulk Interns Imported Successfully!
+          </h5>
+          <button type="button" class="btn-close btn-close-white" (click)="closeBulkInternInviteCard()" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-4 bg-white">
+          <div class="row g-4">
+            <div class="col-lg-7">
+              <div class="d-flex align-items-center mb-4">
+                <div class="flex-shrink-0 bg-success-subtle rounded-3 p-3">
+                  <i class="bi bi-people-fill fs-3 text-success"></i>
+                </div>
+                <div class="ms-3">
+                  <h6 class="fw-bold mb-1 text-navy">Import Complete</h6>
+                  <p class="text-muted mb-0 small">
+                    <strong>{{ newlyImportedInterns.length }}</strong> interns have been added to the system.
+                  </p>
+                </div>
+              </div>
+
+              <div class="p-3 bg-light rounded-4 h-100 shadow-sm">
+                <label class="form-label fw-bold text-navy mb-3">
+                  <i class="bi bi-chat-left-text me-2"></i>Edit Invitation Message
+                </label>
+                <textarea class="form-control border-0 shadow-none bg-white rounded-3 p-3" 
+                  rows="8" 
+                  [(ngModel)]="bulkInternInviteMessage"
+                  style="resize: none; font-size: 0.95rem; line-height: 1.6;"></textarea>
+                <div class="mt-2 text-end">
+                  <small class="text-muted">This message will be sent to all <strong>{{ newlyImportedInterns.length }}</strong> newly imported interns.</small>
+                </div>
+              </div>
+            </div>
+            
+            <div class="col-lg-5">
+              <div class="h-100 d-flex flex-column">
+                <div class="mb-4">
+                  <label class="form-label fw-bold text-navy mb-2">
+                    <i class="bi bi-link-45deg me-2"></i>System Access Link
+                  </label>
+                  <div class="input-group shadow-sm rounded-3 overflow-hidden">
+                    <input type="text" class="form-control border-0 bg-light py-2 ps-3" [value]="bulkInternInviteLink" readonly>
+                    <button class="btn btn-navy px-3" type="button" (click)="copyBulkInternInviteLink()">
+                      <i class="bi bi-clipboard me-1"></i>Copy
+                    </button>
+                  </div>
+                </div>
+
+                <div class="alert alert-warning border-0 rounded-4 shadow-sm mb-4 p-3">
+                  <div class="d-flex">
+                    <div class="flex-shrink-0">
+                      <i class="bi bi-shield-lock-fill fs-4 text-warning"></i>
+                    </div>
+                    <div class="ms-3">
+                      <h6 class="fw-bold mb-1">Security Credentials</h6>
+                      <p class="mb-0 small text-dark">
+                        Interns will use their university email and the default password: 
+                        <span class="badge bg-white text-navy font-monospace border ms-1 badge-password">{{ lastBulkImportPassword }}</span>
+                      </p>
+                      <p class="mt-2 mb-0 small text-muted">A security warning to change password on first login is already included in the message.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mt-auto d-grid gap-3">
+                  <button class="btn btn-navy py-3 fw-bold rounded-3 shadow-sm d-flex align-items-center justify-content-center" 
+                    (click)="sendBulkInternInvites()" [disabled]="isImporting">
+                    <span *ngIf="isImporting" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    <i *ngIf="!isImporting" class="bi bi-send-fill me-2"></i>
+                    {{ isImporting ? 'Send Invitations Now' : 'Send Emails to All Interns' }}
+                  </button>
+                  <button class="btn btn-outline-secondary py-2 fw-semibold border-0" (click)="closeBulkInternInviteCard()">
+                    <i class="bi bi-x-circle me-2"></i>Dismiss for now
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Invite Link Modal (Supervisors) -->
+  <div class="modal fade modern-success-modal" [class.show]="showInviteCard" 
+    [ngStyle]="{'display': showInviteCard ? 'block' : 'none', 'background-color': showInviteCard ? 'rgba(0,0,0,0.5)' : 'transparent'}"
+    tabindex="-1" aria-labelledby="inviteSupervisorModalLabel" *ngIf="showInviteCard && newlyCreatedSupervisor">
+    <div class="modal-dialog modal-dialog-centered modal-lg animate__animated animate__zoomIn">
+      <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+        <div class="modal-header bg-navy text-white py-3 border-0">
+          <h5 class="modal-title fw-bold" id="inviteSupervisorModalLabel">
+            <i class="bi bi-envelope-check me-2"></i>{{ supervisorPassword ? 'Supervisor Created Successfully!' : 'Resend Login Credentials' }}
+          </h5>
+          <button type="button" class="btn-close btn-close-white" (click)="closeInviteCard()" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-4 bg-white">
+          <div class="row g-4">
+            <div class="col-lg-7">
+              <div class="d-flex align-items-center mb-4">
+                <div class="flex-shrink-0 bg-success-subtle rounded-3 p-3">
+                  <i class="bi bi-person-circle fs-3 text-navy"></i>
+                </div>
+                <div class="ms-3">
+                  <h6 class="fw-bold mb-1 text-navy">{{ newlyCreatedSupervisor.name }}</h6>
+                  <p class="text-muted mb-0 small">
+                    <i class="bi bi-envelope me-1"></i>{{ newlyCreatedSupervisor.email }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="p-3 bg-light rounded-4 h-100 shadow-sm">
+                <label class="form-label fw-bold text-navy mb-3">
+                  <i class="bi bi-chat-left-text me-2"></i>Friendly Message
+                </label>
+                <textarea class="form-control border-0 shadow-none bg-white rounded-3 p-3" 
+                  rows="8" 
+                  [(ngModel)]="inviteMessage"
+                  name="inviteMessage"
+                  style="resize: none; font-size: 0.95rem; line-height: 1.6;"></textarea>
+                <div class="mt-2 text-end">
+                  <small class="text-muted">You can edit this message. It will be sent along with the credentials.</small>
+                </div>
+              </div>
+            </div>
+            
+            <div class="col-lg-5">
+              <div class="h-100 d-flex flex-column">
+                <div class="mb-4">
+                  <label class="form-label fw-bold text-navy mb-2">
+                    <i class="bi bi-link-45deg me-2"></i>System Access Link
+                  </label>
+                  <div class="input-group shadow-sm rounded-3 overflow-hidden">
+                    <input type="text" class="form-control border-0 bg-light py-2 ps-3" [value]="inviteLink" readonly>
+                    <button class="btn btn-navy px-3" type="button" (click)="copyInviteLink()">
+                      <i class="bi bi-clipboard me-1"></i>Copy
+                    </button>
+                  </div>
+                </div>
+
+                <div class="alert alert-info border-0 rounded-4 shadow-sm mb-4 p-3">
+                  <div class="d-flex">
+                    <div class="flex-shrink-0">
+                      <i class="bi bi-info-circle-fill fs-4 text-info"></i>
+                    </div>
+                    <div class="ms-3">
+                      <h6 class="fw-bold mb-1">Next Step</h6>
+                      <p class="mb-0 small text-dark">
+                        Send this customized message to provide the supervisor with their login credentials and the invite link.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mt-auto d-grid gap-3">
+                  <button class="btn btn-navy py-3 fw-bold rounded-3 shadow-sm d-flex align-items-center justify-content-center" 
+                    (click)="sendInviteEmail()" [disabled]="isCreatingSupervisor || !inviteMessage.trim()">
+                    <span *ngIf="isCreatingSupervisor" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    <i *ngIf="!isCreatingSupervisor" class="bi bi-envelope-paper me-2"></i>
+                    {{ isCreatingSupervisor ? 'Sending...' : 'Send via Email' }}
+                  </button>
+                  <button class="btn btn-outline-secondary py-2 fw-semibold border-0" (click)="closeInviteCard()">
+                    <i class="bi bi-x-circle me-2"></i>Dismiss for now
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk Import CSV Modal -->
+
+  <div class="modal fade" id="bulkImportInternModal" tabindex="-1" aria-labelledby="bulkImportInternModalLabel"
+    [attr.aria-hidden]="!showBulkImportModal ? 'true' : null" [class.show]="showBulkImportModal"
+    [ngStyle]="{'display': showBulkImportModal ? 'block' : 'none', 'background-color': showBulkImportModal ? 'rgba(0,0,0,0.5)' : 'transparent'}">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 shadow-lg rounded-4">
+        <div class="modal-header bg-navy text-white rounded-top-4 border-0 p-4">
+          <h5 class="modal-title fw-bold" id="bulkImportInternModalLabel">
+            <i class="bi bi-file-earmark-spreadsheet me-2"></i>Bulk Import Interns
+          </h5>
+          <button type="button" class="btn-close btn-close-white" (click)="closeBulkImportModal()"
+            aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-4">
+          <p class="text-muted small mb-4">
+            Upload a CSV file containing intern details. The file supports headers:
+            <b>Name, Surname, Email, ID Number, Start Date, End Date, Employer, Department, Field</b>.<br>
+            <i>Note: If "Department" is specified in the CSV, it will override the default assignment.</i>
+          </p>
+          <form>
+            <div class="mb-4">
+              <label for="csvFileInput" class="form-label fw-medium text-navy">Select CSV File <span
+                  class="text-danger">*</span></label>
+              <input class="form-control" type="file" id="csvFileInput" accept=".csv"
+                (change)="onCsvFileChange($event)">
+            </div>
+            <div class="mb-3">
+              <label for="defaultPasswordInput" class="form-label fw-medium text-navy">Default Password <span
+                  class="text-danger">*</span></label>
+              <div class="input-group">
+                <span class="input-group-text bg-light border-end-0"><i class="bi bi-key text-muted"></i></span>
+                <input [type]="showBulkImportPassword ? 'text' : 'password'" class="form-control border-start-0 ps-0" id="defaultPasswordInput"
+                  [(ngModel)]="bulkImportPassword" name="bulkImportPassword" placeholder="e.g. Univen@123" required>
+                <button type="button" class="btn btn-outline-secondary border-start-0" (click)="showBulkImportPassword = !showBulkImportPassword">
+                  <i class="bi" [ngClass]="showBulkImportPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
+                </button>
+              </div>
+              <div class="form-text">This password will be assigned to all imported interns. They can change it later.
+              </div>
+            </div>
+            <div class="mb-3">
+              <div class="form-check form-switch custom-switch">
+                <input class="form-check-input" type="checkbox" id="sendInvitesCheckbox"
+                  [(ngModel)]="sendInvitesAfterImport" name="sendInvitesAfterImport">
+                <label class="form-check-label fw-medium text-navy" for="sendInvitesCheckbox">
+                  Send invitation emails to all imported interns
+                </label>
+              </div>
+              <div class="form-text small">
+                <i class="bi bi-info-circle me-1"></i>
+                If enabled, interns will receive their credentials and a system link via email.
+              </div>
+            </div>
+            <div class="mb-3">
+              <div class="form-check form-switch custom-switch">
+                <input class="form-check-input" type="checkbox" id="forcePasswordResetCheckbox"
+                  [(ngModel)]="forcePasswordResetAfterImport" name="forcePasswordResetAfterImport">
+                <label class="form-check-label fw-medium text-navy" for="forcePasswordResetCheckbox">
+                  Force password change on first login
+                </label>
+              </div>
+              <div class="form-text small">
+                <i class="bi bi-shield-lock me-1"></i>
+                For security, interns will be prompted to change their default password when they first log in.
+              </div>
+            </div>
+            <div *ngIf="bulkImportError" class="alert alert-danger mt-3 py-2 small">
+              <i class="bi bi-exclamation-triangle-fill me-2"></i>{{ bulkImportError }}
+            </div>
+            <div *ngIf="bulkImportSuccess" class="alert alert-success mt-3 py-2 small">
+              <i class="bi bi-check-circle-fill me-2"></i>{{ bulkImportSuccess }}
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer border-top-0 p-4 bg-light rounded-bottom-4">
+          <button type="button" class="btn btn-outline-secondary px-4 rounded-pill fw-medium"
+            (click)="closeBulkImportModal()" [disabled]="isImporting">Cancel</button>
+          <button type="button" class="btn btn-navy px-4 rounded-pill fw-medium shadow-sm d-flex align-items-center"
+            (click)="processBulkImport()" [disabled]="isImporting || !selectedCsvFile">
+            <span *ngIf="isImporting" class="spinner-border spinner-border-sm me-2" role="status"
+              aria-hidden="true"></span>
+            <i *ngIf="!isImporting" class="bi bi-cloud-upload me-2"></i>
+            {{ isImporting ? 'Importing...' : 'Start Import' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Signature Modal -->
   <div class="modal fade" [class.show]="selectedSignature" [style.display]="selectedSignature ? 'block' : 'none'"
-    tabindex="-1" role="dialog" aria-hidden="true" (click)="closeSignatureModal()">
+    tabindex="-1" role="dialog" [attr.aria-hidden]="!selectedSignature ? 'true' : null" (click)="closeSignatureModal()">
     <div class="modal-dialog modal-dialog-centered modal-lg" role="document" (click)="$event.stopPropagation()">
       <div class="modal-content rounded-4 border-0 shadow-lg">
         <div class="modal-header border-0 pb-0">

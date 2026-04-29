@@ -16,10 +16,11 @@ import { SidebarService } from '../../services/sidebar.service';
 import { Profile } from '../../profile/profile';
 import { LoadingComponent } from '../../shared/components/loading/loading.component';
 import { LogHistoryComponent } from '../../shared/components/log-history/log-history.component';
-import { WebSocketService } from '../../services/websocket.service';
+import { WebSocketService, WebSocketMessage } from '../../services/websocket.service';
 import { ProfileTabService } from '../../services/profile-tab.service';
 import { Subscription, forkJoin, of } from 'rxjs';
 import { map, catchError } from 'rxjs/operators';
+import { ActivityLogService } from '../../services/activity-log.service';
 import Swal from 'sweetalert2';
 import type { SweetAlertResult } from 'sweetalert2';
 import { saveAs } from 'file-saver';
@@ -42,6 +43,7 @@ interface LeaveRequest {
   department?: string;
   field?: string;
   document?: string;
+  viewedBySupervisor?: boolean;
 }
 interface Intern {
   id?: number;
@@ -58,6 +60,7 @@ interface Intern {
   status: 'Present' | 'Absent' | 'On Leave' | 'Not Signed Out';
   signature?: string;
   active?: boolean;
+  hasLoggedIn?: boolean;
 }
 
 
@@ -65,7 +68,7 @@ interface Intern {
 @Component({
   selector: 'app-supervisor-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, Profile, LoadingComponent, LogHistoryComponent],
+  imports: [CommonModule, FormsModule, LoadingComponent, Profile, LogHistoryComponent],
   templateUrl: './supervisor-dashboard.html',
   styleUrls: ['./supervisor-dashboard.css']
 })
@@ -77,6 +80,7 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
   currentDate: string = '';
   private clockTimer: any;
   private leaveRequestCheckInterval: any;
+  hasSystemErrors: boolean = false;
 
   constructor(
     private authService: AuthService,
@@ -94,13 +98,12 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     private api: ApiService,
     private sidebarService: SidebarService,
     private webSocketService: WebSocketService,
-    private profileTabService: ProfileTabService
+    private profileTabService: ProfileTabService,
+    private logService: ActivityLogService
   ) {
-    // Don't call updateSummaries here as supervisor data isn't loaded yet
+    // Initialize navigation items
+    this.navigationItems = [...this.baseNavigationItems];
   }
-
-
-
 
   ngOnInit(): void {
     // Check authentication
@@ -115,10 +118,9 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
         if (params['section']) {
           const section = params['section'];
           // Validate section is valid for supervisor (checking against sections array or type)
-          if (['overview', 'interns', 'leave-requests', 'attendance', 'reports', 'profile', 'logs'].includes(section)) {
-            this.activeSection = section;
-          } else if (section === 'overview') {
-            this.activeSection = 'overview';
+          const validSections = ['overview', 'interns', 'Pending Approvals', 'Intern Leave status', 'history', 'reports', 'Locations', 'logs'];
+          if (validSections.includes(section)) {
+            this.showSection(section);
           }
         }
       })
@@ -164,11 +166,6 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     // Initialize current date
     this.updateCurrentDate();
 
-    // Load seen leave request IDs from localStorage
-    this.loadSeenLeaveRequests();
-
-    // Load interns first, then leave requests and attendance (which depend on intern IDs)
-    // Add small delay to ensure token is stored before making API calls
     // Load interns first (dependent data will be loaded in the success callback)
     // Add small delay to ensure token is stored before making API calls
     setTimeout(() => {
@@ -184,6 +181,9 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
       })
     );
 
+    // Initial error check
+    this.checkSystemErrors();
+
     // Disable loading screen after 1.5 seconds
     setTimeout(() => {
       this.isLoading = false;
@@ -195,6 +195,30 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
    * Subscribe to real-time updates via WebSocket
    */
   private subscribeToRealTimeUpdates(): void {
+    // Listen for leave request notifications
+    this.subscriptions.add(
+      this.webSocketService.notificationUpdates$.subscribe(notification => {
+        if (notification.type === 'LEAVE_REQUEST_CREATED') {
+          this.newLeaveRequestsCount++;
+          this.cdr.detectChanges();
+        }
+      })
+    );
+
+    // Listen for activity logs for error detection
+    this.subscriptions.add(
+      this.webSocketService.logUpdates$.subscribe((message: WebSocketMessage) => {
+        if (message.type === 'ACTIVITY_LOG_CREATED') {
+          const log = message.data;
+          if (this.logService.isErrorLog(log)) {
+            this.hasSystemErrors = true;
+            this.updateNavigationItems();
+            console.log('ðŸš¨ System error detected. Log History visible.');
+          }
+        }
+      })
+    );
+
     // Subscribe to leave request updates via dataPreloadService
     this.subscriptions.add(
       this.dataPreloadService.getUpdateObservable('leaveRequests').subscribe(updatedRequests => {
@@ -215,7 +239,7 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
           this.updateFilteredLeaveRequests();
           this.checkForNewLeaveRequests();
           this.cdr.detectChanges();
-          console.log('🔄 Leave requests updated in real-time');
+          console.log('ðŸ”„ Leave requests updated in real-time');
         }
       })
     );
@@ -235,7 +259,7 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
           }
           this.updateSummaries();
           this.cdr.detectChanges();
-          console.log('🔄 Interns updated in real-time');
+          console.log('ðŸ”„ Interns updated in real-time');
         }
       })
     );
@@ -244,7 +268,7 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     this.subscriptions.add(
       this.dataPreloadService.getUpdateObservable('attendance').subscribe(updatedAttendance => {
         if (updatedAttendance) {
-          console.log('🔄 Attendance updated in real-time');
+          console.log('ðŸ”„ Attendance updated in real-time');
           this.loadAttendanceHistory();
           // Reload interns to update status (e.g. 'Present', 'Absent')
           this.loadInterns();
@@ -255,7 +279,7 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     // Direct WebSocket subscriptions for immediate real-time updates
     this.subscriptions.add(
       this.webSocketService.leaveRequestUpdates$.subscribe(message => {
-        console.log('📨 WebSocket leave request update:', message.type);
+        console.log('ðŸ“© WebSocket leave request update:', message.type);
         // Reload leave requests immediately on any change
         this.loadLeaveRequests();
         this.checkForNewLeaveRequests();
@@ -264,7 +288,7 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
 
     this.subscriptions.add(
       this.webSocketService.internUpdates$.subscribe(message => {
-        console.log('📨 WebSocket intern update:', message.type);
+        console.log('ðŸ“© WebSocket intern update:', message.type);
         // Reload interns immediately on any change
         this.loadInterns();
       })
@@ -272,12 +296,46 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
 
     this.subscriptions.add(
       this.webSocketService.attendanceUpdates$.subscribe(message => {
-        console.log('📨 WebSocket attendance update:', message.type);
+        console.log('ðŸ“© WebSocket attendance update:', message.type);
         // Reload attendance and interns immediately
         this.loadAttendanceHistory();
         this.loadInterns();
       })
     );
+
+    this.subscriptions.add(
+      this.webSocketService.userUpdates$.subscribe(message => {
+        if (message && (message.type === 'USER_PROFILE_UPDATED' || message.type === 'PROFILE_UPDATED')) {
+          console.log('🔄 WebSocket user profile update:', message.type);
+          this.loadInterns();
+          
+          // Update supervisor's own details if it matches
+          const currentUser = this.authService.getCurrentUserSync();
+          if (currentUser && message.data && message.data.email === currentUser.email && this.supervisor) {
+            this.supervisor.name = message.data.name || this.supervisor.name;
+            if (message.data.department) {
+               this.supervisor.Department = message.data.department;
+            }
+            this.cdr.detectChanges();
+          }
+        }
+      })
+    );
+  }
+
+  private checkSystemErrors(): void {
+    if (this.logService) {
+      this.logService.hasRecentErrors().subscribe((hasErrors: boolean) => {
+        this.hasSystemErrors = hasErrors;
+        this.updateNavigationItems();
+      });
+    }
+  }
+
+
+  private updateNavigationItems(): void {
+    this.navigationItems = [...this.baseNavigationItems];
+    this.cdr.detectChanges();
   }
 
   ngOnDestroy(): void {
@@ -385,16 +443,18 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
   }
 
   // ===== Navigation =====
-  activeSection: 'overview' | 'interns' | 'Intern Leave status' | 'history' | 'reports' | 'Locations' | 'profile' | 'logs' = 'overview';
+  activeSection: 'overview' | 'interns' | 'Pending Approvals' | 'Intern Leave status' | 'history' | 'reports' | 'Locations' | 'profile' | 'logs' = 'overview';
 
   showSection(section: string) {
-    const validSections: Array<'overview' | 'interns' | 'Intern Leave status' | 'history' | 'reports' | 'Locations' | 'profile' | 'logs'> = [
-      'overview', 'interns', 'Intern Leave status', 'history', 'reports', 'Locations', 'profile', 'logs'
+    console.log(`ðŸš€ Switching supervisor dashboard section: ${this.activeSection} -> ${section}`);
+    const validSections: Array<'overview' | 'interns' | 'Pending Approvals' | 'Intern Leave status' | 'history' | 'reports' | 'Locations' | 'profile' | 'logs'> = [
+      'overview', 'interns', 'Pending Approvals', 'Intern Leave status', 'history', 'reports', 'Locations', 'profile', 'logs'
     ];
     if (validSections.includes(section as any)) {
       this.activeSection = section as
         | 'overview'
         | 'interns'
+        | 'Pending Approvals'
         | 'Intern Leave status'
         | 'history'
         | 'reports'
@@ -456,14 +516,16 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     });
   }
 
-  // Navigation items with icons
-  navigationItems = [
+  // Dashboard sections
+  navigationItems: any[] = [];
+
+  private baseNavigationItems = [
     { id: 'overview', label: 'Dashboard', icon: 'bi bi-grid-3x3-gap' },
+    { id: 'Pending Approvals', label: 'Pending Approvals', icon: 'bi bi-person-plus-fill' },
     { id: 'interns', label: 'Interns', icon: 'bi bi-people-fill' },
     { id: 'Intern Leave status', label: 'Leave Status', icon: 'bi bi-calendar-check' },
-    { id: 'history', label: 'History', icon: 'bi bi-clock-history' },
+    { id: 'Attendance history', label: 'History', icon: 'bi bi-clock-history' },
     { id: 'reports', label: 'Reports', icon: 'bi bi-file-earmark-text' },
-    { id: 'logs', label: 'Log History', icon: 'bi bi-journal-text' },
     { id: 'Locations', label: 'Locations', icon: 'bi bi-geo-alt-fill' }
   ];
 
@@ -636,6 +698,196 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
   }
 
 
+  // ===== Pending Interns Approvals =====
+  get pendingInterns(): any[] {
+    return this.interns.filter(i => i.active === false);
+  }
+
+  get newlyCreatedInterns(): any[] {
+    // Interns are "newly created" (pending onboarding) if they are active but have never logged in
+    // We treat hasLoggedIn as false if it's explicitly false or null/undefined
+    return this.interns.filter(i => i.active !== false && i.hasLoggedIn !== true);
+  }
+
+  resendInternInvite(intern: any) {
+    if (!intern.email) return;
+
+    Swal.fire({
+      title: 'Resend Invitation?',
+      text: `Are you sure you want to resend the invitation email to ${intern.name}?`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, Send Invite',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#1e3a5f',
+      cancelButtonColor: '#6c757d'
+    }).then((result: SweetAlertResult) => {
+      if (result.isConfirmed) {
+        // Show loading
+        Swal.fire({
+          title: 'Sending Invite...',
+          allowOutsideClick: false,
+          didOpen: () => {
+            Swal.showLoading();
+          }
+        });
+
+        // Use bulkSendInvites for a single intern for simplicity/reusability
+        const inviteData = [{
+          email: intern.email,
+          name: intern.name
+        }];
+
+        const defaultMessage = `Welcome to the Univen Intern Register. Please use your email to log in for the first time.`;
+
+        this.internService.bulkSendInvites(inviteData, defaultMessage).subscribe({
+          next: () => {
+            Swal.fire({
+              icon: 'success',
+              title: 'Sent!',
+              text: `Invitation sent to ${intern.email}`,
+              timer: 2000,
+              showConfirmButton: false
+            });
+          },
+          error: (error) => {
+            console.error('Error sending invite:', error);
+            Swal.fire('Error', error.error?.message || 'Failed to send invitation.', 'error');
+          }
+        });
+      }
+    });
+  }
+
+  viewInternContract(intern: any) {
+    if (!intern.id) return;
+    this.internService.getInternContractAgreement(intern.id).subscribe({
+      next: (res: any) => {
+        if (res && res.contractAgreement) {
+          const base64Data = res.contractAgreement;
+
+          let mimeType = 'application/pdf'; // Default
+          if (base64Data.startsWith('data:image/')) {
+            const match = base64Data.match(/data:(image\/[a-zA-Z]+);base64,/);
+            if (match && match.length > 1) {
+              mimeType = match[1];
+            }
+          }
+
+          const base64Content = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+
+          try {
+            const byteCharacters = atob(base64Content);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: mimeType });
+
+            const url = window.URL.createObjectURL(blob);
+            window.open(url, '_blank');
+            setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+          } catch (e) {
+            console.error('Error decoding base64 contract:', e);
+            Swal.fire('Error', 'Failed to read contract document format.', 'error');
+          }
+        } else {
+          Swal.fire('Not Found', 'This intern does not have a contract agreement uploaded.', 'info');
+        }
+      },
+      error: (err) => {
+        console.error('Error fetching contract agreement:', err);
+        Swal.fire('Error', 'Failed to fetch contract document.', 'error');
+      }
+    });
+  }
+
+  approveIntern(intern: any) {
+    if (!intern.id) return;
+
+    Swal.fire({
+      title: 'Approve Intern?',
+      text: `Are you sure you want to approve and activate the registration for ${intern.name}?`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#28a745',
+      cancelButtonColor: '#6c757d',
+      confirmButtonText: 'Yes, Approve',
+      cancelButtonText: 'Cancel'
+    }).then((result: SweetAlertResult) => {
+      if (result.isConfirmed) {
+        this.internService.activateIntern(intern.id!).subscribe({
+          next: () => {
+            const index = this.interns.findIndex(i => i.id === intern.id);
+            if (index !== -1) {
+              this.interns[index].active = true;
+              this.interns = [...this.interns]; // Trigger change detection
+            }
+            this.cdr.detectChanges();
+
+            Swal.fire({
+              icon: 'success',
+              title: 'Approved!',
+              text: `Intern "${intern.name}" has been approved and activated.`,
+              timer: 2000,
+              showConfirmButton: false
+            });
+          },
+          error: (error) => {
+            console.error('Error approving intern:', error);
+            Swal.fire({
+              icon: 'error',
+              title: 'Approval Failed',
+              text: error.error?.message || 'Failed to approve intern.'
+            });
+          }
+        });
+      }
+    });
+  }
+
+  rejectIntern(intern: any) {
+    if (!intern.id) return;
+
+    Swal.fire({
+      title: 'Reject Intern Registration?',
+      text: `Are you sure you want to reject and delete the registration for ${intern.name}? This action cannot be undone.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#6c757d',
+      confirmButtonText: 'Yes, Reject & Delete',
+      cancelButtonText: 'Cancel'
+    }).then((result: SweetAlertResult) => {
+      if (result.isConfirmed) {
+        this.internService.deleteIntern(intern.id!).subscribe({
+          next: () => {
+            // Remove from local array
+            this.interns = this.interns.filter(i => i.id !== intern.id);
+            this.cdr.detectChanges();
+
+            Swal.fire({
+              icon: 'success',
+              title: 'Rejected!',
+              text: `Registration for "${intern.name}" has been rejected and deleted.`,
+              timer: 2000,
+              showConfirmButton: false
+            });
+          },
+          error: (error) => {
+            console.error('Error rejecting intern:', error);
+            Swal.fire({
+              icon: 'error',
+              title: 'Rejection Failed',
+              text: error.error?.message || 'Failed to reject and delete intern.'
+            });
+          }
+        });
+      }
+    });
+  }
+
   deactivateIntern(intern: any) {
     const index = this.interns.findIndex(i => i.email === intern.email);
     if (index === -1) return;
@@ -743,7 +995,10 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
 
   // ===== Filtered Interns Getter =====
   get filteredInterns() {
-    let filtered = this.interns;
+    // Exclude CSV-imported / admin-created interns who have never logged in â€”
+    // those are shown in the "Pending Onboarding" table via newlyCreatedInterns.
+    // An intern is only fully "onboarded" once hasLoggedIn is explicitly true.
+    let filtered = this.interns.filter(i => i.hasLoggedIn === true);
 
     // Filter by name
     if (this.internFilterName) {
@@ -854,9 +1109,6 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
   filteredLeaveRequests: LeaveRequest[] = [];
 
   clearedLeaveRequests: any[] = [];
-
-  // Track seen leave request IDs
-  seenLeaveRequestIds: Set<number> = new Set();
 
   // New leave requests count
   newLeaveRequestsCount: number = 0;
@@ -998,14 +1250,14 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
   loadInterns(): void {
     const currentUser = this.authService.getCurrentUserSync();
     if (!currentUser || !currentUser.id) {
-      console.warn('⚠️ Cannot load interns: currentUser or currentUser.id is missing');
+      console.warn('Ã¢Å¡Â Ã¯Â¸Â Cannot load interns: currentUser or currentUser.id is missing');
       return;
     }
 
     const supervisorDepartment = this.supervisor.Department || currentUser.department || '';
     const supervisorId = currentUser.id;
 
-    console.log('🔍 Loading interns for supervisor:', {
+    console.log('Ã°Å¸â€Â Loading interns for supervisor:', {
       supervisorId: supervisorId,
       supervisorName: this.supervisor.name,
       supervisorEmail: this.supervisor.email,
@@ -1015,8 +1267,8 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     // Get all interns and filter by supervisor
     this.internService.getAllInterns().subscribe({
       next: (interns: InternResponse[]) => {
-        console.log('📋 All interns from backend:', interns.length);
-        console.log('📋 Interns data:', interns.map(i => ({
+        console.log('Ã°Å¸â€œâ€¹ All interns from backend:', interns.length);
+        console.log('Ã°Å¸â€œâ€¹ Interns data:', interns.map(i => ({
           id: i.id,
           name: i.name,
           email: i.email,
@@ -1036,10 +1288,12 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
             supervisorDepartment &&
             intern.departmentName.toLowerCase().trim() === supervisorDepartment.toLowerCase().trim();
 
-          const shouldInclude = isAssignedToSupervisor || isSameDepartment;
+          // ALWAYS include interns pending approval Ã¢â‚¬â€ they haven't been assigned yet
+          const isPending = intern.active === false;
+          const shouldInclude = isAssignedToSupervisor || isSameDepartment || isPending;
 
           if (shouldInclude) {
-            console.log('✅ Including intern:', {
+            console.log('Ã¢Å“â€¦ Including intern:', {
               name: intern.name,
               email: intern.email,
               reason: isAssignedToSupervisor ? 'Assigned to this supervisor' : 'Same department (Health)',
@@ -1049,7 +1303,7 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
               supervisorName: intern.supervisorName || 'Not assigned'
             });
           } else {
-            console.log('❌ Excluding intern:', {
+            console.log('Ã¢ÂÅ’ Excluding intern:', {
               name: intern.name,
               department: intern.departmentName,
               supervisorDepartment: supervisorDepartment,
@@ -1061,7 +1315,7 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
           return shouldInclude;
         });
 
-        console.log('✅ Filtered interns count:', filteredInterns.length);
+        console.log('Ã¢Å“â€¦ Filtered interns count:', filteredInterns.length);
 
         this.interns = filteredInterns.map(intern => ({
           id: intern.id,
@@ -1076,10 +1330,13 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
           departmentId: intern.departmentId,
           field: intern.field || '',
           status: this.mapStatus(intern.status),
-          active: intern.active !== false
+          // Preserve `false` exactly Ã¢â‚¬â€ active is false for pending interns
+          // `intern.active === null` or `undefined` means old record before approval column existed Ã¢â€ â€™ treat as active
+          active: intern.active === false ? false : true,
+          hasLoggedIn: intern.hasLoggedIn === true // Explicitly map hasLoggedIn
         }));
 
-        console.log('✅ Final interns array:', this.interns.map(i => ({
+        console.log('Ã¢Å“â€¦ Final interns array:', this.interns.map(i => ({
           name: i.name,
           department: i.department,
           field: i.field,
@@ -1101,8 +1358,8 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
         this.subscribeToRealTimeUpdates();
       },
       error: (error) => {
-        console.error('❌ Error loading interns:', error);
-        console.error('❌ Error details:', {
+        console.error('Ã¢ÂÅ’ Error loading interns:', error);
+        console.error('Ã¢ÂÅ’ Error details:', {
           status: error.status,
           statusText: error.statusText,
           message: error.message,
@@ -1185,10 +1442,10 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     }
 
     // Get all leave requests (backend handles filtering for supervisor)
-    console.log('🔍 [Supervisor] Requesting leave requests from backend...');
+    console.log('Ã°Å¸â€Â [Supervisor] Requesting leave requests from backend...');
     this.leaveRequestService.getAllLeaveRequests().subscribe({
       next: (requests) => {
-        console.log('✅ [Supervisor] Leave requests received from backend:', requests);
+        console.log('Ã¢Å“â€¦ [Supervisor] Leave requests received from backend:', requests);
         if (requests && requests.length > 0) {
           console.log('   - First request sample:', requests[0]);
         } else {
@@ -1211,6 +1468,7 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
             department: req.department || '',
             field: req.field || '',
             document: req.document,
+            viewedBySupervisor: req.viewedBySupervisor,
             internId: req.internId // Keep track of internId if available
           }))
           .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
@@ -1285,9 +1543,12 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
             }
 
             // Mark as seen when approved
-            const requestId = this.getRequestId(request);
-            this.seenLeaveRequestIds.add(requestId);
-            this.saveSeenLeaveRequests();
+            this.leaveRequestService.markAsSeen(request.id).subscribe({
+              next: () => {
+                request.viewedBySupervisor = true;
+                this.updateNewLeaveRequestsCount();
+              }
+            });
 
             this.updateFilteredLeaveRequests();
             this.updateSummaries();
@@ -1314,17 +1575,17 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     });
   }
 
-  // Load seen leave request IDs from localStorage
-  loadSeenLeaveRequests(): void {
-    const seenIds = localStorage.getItem(`seenLeaveRequests_${this.supervisor.email}`);
-    if (seenIds) {
-      this.seenLeaveRequestIds = new Set(JSON.parse(seenIds));
-    }
-  }
-
-  // Save seen leave request IDs to localStorage
-  saveSeenLeaveRequests(): void {
-    localStorage.setItem(`seenLeaveRequests_${this.supervisor.email}`, JSON.stringify(Array.from(this.seenLeaveRequestIds)));
+  // Method to clear seen requests (for testing) - No longer using localStorage
+  clearSeenLeaveRequests(): void {
+    // This feature would require a backend endpoint to reset viewedBySupervisor
+    // For now, we'll just show a message that it's managed via MySQL
+    Swal.fire({
+      icon: 'info',
+      title: 'Info',
+      text: 'Seen status is now managed via MySQL. Clearing requires database update.',
+      timer: 2000,
+      showConfirmButton: false
+    });
   }
 
   // Check for new leave requests and show alert
@@ -1358,13 +1619,12 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     });
 
     console.log('[Leave Alert] Pending requests:', pendingRequests.length);
-    console.log('[Leave Alert] Seen request IDs:', Array.from(this.seenLeaveRequestIds));
+
 
     // Filter new requests (not seen before)
     const newRequests = pendingRequests.filter(req => {
-      const requestId = this.getRequestId(req);
-      const isNew = !this.seenLeaveRequestIds.has(requestId);
-      console.log(`[Leave Alert] Request ${req.name} (ID: ${requestId}): ${isNew ? 'NEW' : 'SEEN'}`);
+      const isNew = !req.viewedBySupervisor;
+      console.log(`[Leave Alert] Request ${req.name} (ID: ${req.id}): ${isNew ? 'NEW' : 'SEEN'}`);
       return isNew;
     });
 
@@ -1380,16 +1640,16 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
           // Only mark as shown if not forced (prevents multiple alerts for same requests)
           this.alertShownThisSession = true;
         }
-        console.log('[Leave Alert] ✅ Showing alert for', newRequests.length, 'new request(s)');
+        console.log('[Leave Alert] Ã¢Å“â€¦ Showing alert for', newRequests.length, 'new request(s)');
         // Small delay to ensure UI is ready
         setTimeout(() => {
           this.showNewLeaveRequestAlert(newRequests);
         }, 1000);
       } else {
-        console.log('[Leave Alert] ⚠️ Alert already shown this session, skipping');
+        console.log('[Leave Alert] Ã¢Å¡Â Ã¯Â¸Â Alert already shown this session, skipping');
       }
     } else {
-      console.log('[Leave Alert] ℹ️ No new requests to show');
+      console.log('[Leave Alert] Ã¢â€žÂ¹Ã¯Â¸Â No new requests to show');
     }
   }
 
@@ -1400,20 +1660,7 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     this.checkForNewLeaveRequests(true);
   }
 
-  // Method to clear seen requests (for testing)
-  clearSeenLeaveRequests(): void {
-    this.seenLeaveRequestIds.clear();
-    this.saveSeenLeaveRequests();
-    this.updateNewLeaveRequestsCount();
-    console.log('[Leave Alert] Cleared all seen leave requests');
-    Swal.fire({
-      icon: 'success',
-      title: 'Cleared',
-      text: 'All seen leave requests have been cleared. Refresh to see alerts again.',
-      timer: 2000,
-      showConfirmButton: false
-    });
-  }
+  // Methods removed as seen status is now in MySQL
 
   // Generate unique ID for a leave request
   getRequestId(request: any): number {
@@ -1431,6 +1678,13 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     }
     return Math.abs(hash);
   }
+
+  // Invite link card
+  showBulkInternInviteCard: boolean = false;
+  bulkInternInviteMessage: string = '';
+  bulkInternInviteLink: string = '';
+  newlyImportedInterns: any[] = [];
+  lastBulkImportPassword: string = '';
 
   // Show alert for new leave requests
   showNewLeaveRequestAlert(newRequests: any[]): void {
@@ -1466,10 +1720,15 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
       }
       // Mark all new requests as seen (whether they clicked view or later)
       newRequests.forEach(req => {
-        const requestId = this.getRequestId(req);
-        this.seenLeaveRequestIds.add(requestId);
+        if (req.id) {
+          this.leaveRequestService.markAsSeen(req.id).subscribe({
+            next: () => {
+              req.viewedBySupervisor = true;
+              this.updateNewLeaveRequestsCount();
+            }
+          });
+        }
       });
-      this.saveSeenLeaveRequests();
       // Update count after marking as seen
       this.updateNewLeaveRequestsCount();
     });
@@ -1488,8 +1747,7 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     });
 
     const newRequests = pendingRequests.filter(req => {
-      const requestId = this.getRequestId(req);
-      return !this.seenLeaveRequestIds.has(requestId);
+      return !req.viewedBySupervisor;
     });
 
     this.newLeaveRequestsCount = newRequests.length;
@@ -1497,16 +1755,21 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
 
   // Mark leave requests as seen when viewing the leave status section
   markLeaveRequestsAsSeen(): void {
-    const pendingRequests = this.leaveRequests.filter(req => {
-      return req.status === 'Pending' &&
-        (req.supervisorEmail === this.supervisor.email || !req.supervisorEmail);
+    const unseenPendingRequests = this.leaveRequests.filter(req => {
+      return req.status === 'Pending' && !req.viewedBySupervisor;
     });
-    pendingRequests.forEach(req => {
-      const requestId = this.getRequestId(req);
-      this.seenLeaveRequestIds.add(requestId);
+
+    unseenPendingRequests.forEach(req => {
+      if (req.id) {
+        this.leaveRequestService.markAsSeen(req.id).subscribe({
+          next: () => {
+            req.viewedBySupervisor = true;
+            this.updateNewLeaveRequestsCount();
+            this.cdr.detectChanges();
+          }
+        });
+      }
     });
-    this.saveSeenLeaveRequests();
-    this.updateNewLeaveRequestsCount();
   }
 
 
@@ -1550,9 +1813,12 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
             }
 
             // Mark as seen when declined
-            const requestId = this.getRequestId(request);
-            this.seenLeaveRequestIds.add(requestId);
-            this.saveSeenLeaveRequests();
+            this.leaveRequestService.markAsSeen(request.id).subscribe({
+              next: () => {
+                request.viewedBySupervisor = true;
+                this.updateNewLeaveRequestsCount();
+              }
+            });
 
             this.updateFilteredLeaveRequests();
             this.updateSummaries();
@@ -1809,6 +2075,8 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     // If "Total Interns" card is clicked, navigate to interns section
     if (stat.label === 'Total Interns') {
       this.showSection('interns');
+    } else if (stat.label === 'Pending Approvals') {
+      this.showSection('Pending Approvals');
     } else {
       // For other cards, open the modal
       this.openModal(stat);
@@ -1835,9 +2103,14 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     this.filteredAttendanceFields = [];
     this.filteredPresentFields = [];
 
-    const modalEl = document.getElementById('supervisorModal');
-    const modal = new bootstrap.Modal(modalEl);
-    modal.show();
+    // Force change detection to ensure modal content updates before being shown
+    this.cdr.detectChanges();
+
+    const modalElement = document.getElementById('supervisorModal');
+    if (modalElement) {
+      const modal = new bootstrap.Modal(modalElement);
+      modal.show();
+    }
   }
 
   // ===== Attendance History =====
@@ -2189,6 +2462,16 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
 
   get totalHistoryPages(): number {
     return Math.ceil(this.internsForWeek.length / this.historyItemsPerPage) || 1;
+  }
+
+
+  getInitials(name: string): string {
+    if (!name) return '??';
+    const parts = name.trim().split(' ');
+    if (parts.length >= 2) {
+      return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+    }
+    return name.charAt(0).toUpperCase();
   }
 
   // Pagination helpers for History
@@ -2567,12 +2850,14 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
   // ===== Update overview summary =====
   updateSummaries() {
     const total = this.interns.length;
-    const present = this.interns.filter(i => i.status === 'Present').length;
-    const onLeave = this.interns.filter(i => i.status === 'On Leave').length;
-    const absent = this.interns.filter(i => i.status === 'Absent').length;
+    const pending = this.interns.filter(i => i.active === false).length;
+    const present = this.interns.filter(i => i.status === 'Present' && i.active !== false).length;
+    const onLeave = this.interns.filter(i => i.status === 'On Leave' && i.active !== false).length;
+    const absent = this.interns.filter(i => i.status === 'Absent' && i.active !== false).length;
 
     this.overviewStats = [
       { label: 'Total Interns', value: total, icon: 'bi bi-people-fill', color: 'primary' },
+      { label: 'Pending Approvals', value: pending, icon: 'bi bi-person-plus-fill', color: 'info' },
       { label: 'Present Today', value: present, icon: 'bi bi-person-check-fill', color: 'success' },
       { label: 'On Leave', value: onLeave, icon: 'bi bi-calendar-event', color: 'warning' },
       { label: 'Absent', value: absent, icon: 'bi bi-person-x-fill', color: 'danger' }
@@ -2633,9 +2918,9 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     try {
       this.map = L.map(mapElement).setView([-22.9756, 30.4414], 16);
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '',
-        maxZoom: 19
+      L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        attribution: '&copy; Google Maps',
+        maxZoom: 20
       }).addTo(this.map);
 
       this.map.on('click', (event: any) => {
@@ -2649,13 +2934,38 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     }
   }
 
-  onMapClick(event: any) {
+  async onMapClick(event: any) {
     this.selectedLat = event.latlng.lat;
     this.selectedLng = event.latlng.lng;
 
     if (this.interns.length === 0) {
       this.loadInterns();
     }
+
+    // Show loading state while reverse geocoding
+    Swal.fire({
+      title: 'Detecting Location...',
+      html: 'Looking up building names from satellite coordinates...<br><br><div class="spinner-border text-primary" role="status"></div>',
+      allowOutsideClick: false,
+      showConfirmButton: false
+    });
+
+    let detectedName = '';
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${this.selectedLat}&lon=${this.selectedLng}&zoom=18&addressdetails=1`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.address) {
+          detectedName = data.address.amenity || data.address.building || data.address.office || data.address.university || data.address.road || data.name || '';
+        } else if (data && data.name) {
+          detectedName = data.name;
+        }
+      }
+    } catch (e) {
+      console.warn('Reverse geocoding failed', e);
+    }
+    
+    Swal.close();
 
     const internOptions = this.interns
       .filter(intern => intern.active !== false)
@@ -2668,7 +2978,7 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
         <div class="text-start">
           <div class="mb-3">
             <label for="locationName" class="form-label fw-semibold">Location Name <span class="text-danger">*</span></label>
-            <input type="text" id="locationName" class="form-control" placeholder="e.g., Building A, Library, etc." required>
+            <input type="text" id="locationName" class="form-control" placeholder="e.g., Building A, Library, etc." value="${detectedName}" required>
           </div>
           <div class="mb-3">
             <label for="locationRadius" class="form-label fw-semibold">Radius (meters) <span class="text-danger">*</span></label>
@@ -2689,6 +2999,13 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
             </select>
             <small class="text-muted">If selected, only this intern can sign in at this location</small>
           </div>
+          <div class="mb-3">
+            <label for="allowedStartTime" class="form-label fw-semibold">
+              <i class="bi bi-clock-fill me-1"></i>Allowed Sign-in From <span class="text-danger">*</span>
+            </label>
+            <input type="time" id="allowedStartTime" class="form-control" value="08:00" required>
+            <small class="text-muted">Interns cannot sign in before this time</small>
+          </div>
           <div class="alert alert-info mb-0">
             <i class="bi bi-info-circle me-2"></i>
             Coordinates: ${this.selectedLat.toFixed(6)}, ${this.selectedLng.toFixed(6)}
@@ -2707,6 +3024,7 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
         const radius = parseInt((document.getElementById('locationRadius') as HTMLInputElement)?.value || '100');
         const description = (document.getElementById('locationDescription') as HTMLTextAreaElement)?.value || '';
         const assignToIntern = (document.getElementById('assignToIntern') as HTMLSelectElement)?.value || '';
+        const allowedStartTime = (document.getElementById('allowedStartTime') as HTMLInputElement)?.value || '08:00';
 
         if (!name || name.trim() === '') {
           Swal.showValidationMessage('Please enter a location name');
@@ -2720,7 +3038,8 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
           name: name.trim(),
           radius,
           description: description.trim(),
-          assignToIntern: assignToIntern ? parseInt(assignToIntern) : null
+          assignToIntern: assignToIntern ? parseInt(assignToIntern) : null,
+          allowedStartTime
         };
       }
     }).then((result: SweetAlertResult) => {
@@ -2729,19 +3048,21 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
           result.value.name,
           result.value.radius,
           result.value.description,
-          result.value.assignToIntern
+          result.value.assignToIntern,
+          result.value.allowedStartTime
         );
       }
     });
   }
 
-  addLocation(name: string, radius: number, description: string = '', assignToInternId: number | null = null) {
+  addLocation(name: string, radius: number, description: string = '', assignToInternId: number | null = null, allowedStartTime: string = '08:00') {
     const locationData = {
       name,
       latitude: this.selectedLat,
       longitude: this.selectedLng,
       radius,
-      description: description || undefined
+      description: description || undefined,
+      allowedStartTime
     };
 
     this.locationService.createLocation(locationData).subscribe({
@@ -2754,7 +3075,8 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
           longitude: savedLocation.longitude,
           radius: savedLocation.radius,
           description: savedLocation.description,
-          active: savedLocation.active
+          active: savedLocation.active,
+          allowedStartTime: savedLocation.allowedStartTime
         };
 
         this.locations.push(newLocation);
@@ -2855,7 +3177,10 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
         <div class="p-2">
           <h6 class="fw-bold mb-1">${location.name}</h6>
           <p class="mb-1 small">${location.description || 'No description'}</p>
-          <p class="mb-0 small text-muted">Radius: ${location.radius}m</p>
+          <div class="d-flex flex-wrap gap-2 mt-2">
+            <span class="badge bg-navy text-white small">Radius: ${location.radius}m</span>
+            ${location.allowedStartTime ? `<span class="badge bg-gold text-navy small"><i class="bi bi-clock-history me-1"></i>From ${location.allowedStartTime}</span>` : ''}
+          </div>
         </div>
       `;
 
@@ -2868,7 +3193,7 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
     if (this.locations.length > 0) {
       const boundsPoints: [number, number][] = this.locations.map(loc => [loc.latitude, loc.longitude]);
       const bounds = L.latLngBounds(boundsPoints);
-      this.map.fitBounds(bounds, { padding: [20, 20] });
+      this.map.fitBounds(bounds, { maxZoom: 16, padding: [20, 20] });
     }
   }
 
@@ -2932,6 +3257,13 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
               ${internOptions}
             </select>
           </div>
+          <div class="mb-3">
+            <label for="editAllowedStartTime" class="form-label fw-semibold">
+              <i class="bi bi-clock-fill me-1"></i>Allowed Sign-in From <span class="text-danger">*</span>
+            </label>
+            <input type="time" id="editAllowedStartTime" class="form-control" value="${location.allowedStartTime || '08:00'}" required>
+            <small class="text-muted">Interns cannot sign in before this time</small>
+          </div>
           <div class="alert alert-info mb-0">
             <i class="bi bi-info-circle me-2"></i>
             Coordinates: ${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}
@@ -2950,6 +3282,7 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
         const radius = parseInt((document.getElementById('editLocationRadius') as HTMLInputElement)?.value || '100');
         const description = (document.getElementById('editLocationDescription') as HTMLTextAreaElement)?.value || '';
         const assignToIntern = (document.getElementById('editAssignToIntern') as HTMLSelectElement)?.value || '';
+        const allowedStartTime = (document.getElementById('editAllowedStartTime') as HTMLInputElement)?.value || '08:00';
 
         if (!name || name.trim() === '') {
           Swal.showValidationMessage('Please enter a location name');
@@ -2959,12 +3292,17 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
           Swal.showValidationMessage('Radius must be between 10 and 500 meters');
           return false;
         }
-        return { name: name.trim(), radius, description: description.trim(), assignToIntern: assignToIntern ? parseInt(assignToIntern) : null };
+        return { name: name.trim(), radius, description: description.trim(), assignToIntern: assignToIntern ? parseInt(assignToIntern) : null, allowedStartTime };
       }
     }).then((result: SweetAlertResult) => {
       if (result.isConfirmed && result.value && location.id) {
         const locationId = location.locationId || location.id;
-        const updateData = { name: result.value.name, radius: result.value.radius, description: result.value.description };
+        const updateData = {
+          name: result.value.name,
+          radius: result.value.radius,
+          description: result.value.description,
+          allowedStartTime: result.value.allowedStartTime
+        };
 
         this.locationService.updateLocation(locationId, updateData).subscribe({
           next: (updatedLocation: Location) => {
@@ -2978,7 +3316,8 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
                 longitude: updatedLocation.longitude,
                 radius: updatedLocation.radius,
                 description: updatedLocation.description,
-                active: updatedLocation.active
+                active: updatedLocation.active,
+                allowedStartTime: updatedLocation.allowedStartTime
               };
             }
             this.loadLocationsOnMap();
@@ -2997,5 +3336,357 @@ export class SupervisorDashboard implements OnInit, OnDestroy {
         });
       }
     });
+  }
+
+  // ===================== BULK IMPORT CSV =====================
+  showBulkImportModal: boolean = false;
+  bulkImportPassword: string = 'Password123!';
+  sendInvitesAfterImport: boolean = true;
+  forcePasswordResetAfterImport: boolean = true; 
+  selectedCsvFile: File | null = null;
+  bulkImportError: string | null = null;
+  bulkImportSuccess: string | null = null;
+  isImporting: boolean = false;
+
+  openBulkImportModal() {
+    this.showBulkImportModal = true;
+    this.bulkImportError = null;
+    this.bulkImportSuccess = null;
+    this.selectedCsvFile = null;
+    this.bulkImportPassword = 'Password123!';
+    this.isImporting = false;
+    this.sendInvitesAfterImport = true; // Reset to true on open
+    this.showBulkInternInviteCard = false; // Close invite card if open
+    this.cdr.detectChanges();
+
+    // Reset file input if exists
+    const fileInput = document.getElementById('csvFileInput') as HTMLInputElement;
+    if (fileInput) fileInput.value = '';
+  }
+
+  closeBulkImportModal() {
+    this.showBulkImportModal = false;
+    this.bulkImportError = null;
+    this.bulkImportSuccess = null;
+  }
+
+  onCsvFileChange(event: any) {
+    const file = event.target.files[0];
+    if (file && (file.type === 'text/csv' || file.name.endsWith('.csv') || file.name.endsWith('.CSV'))) {
+      this.selectedCsvFile = file;
+      this.bulkImportError = null;
+    } else {
+      this.selectedCsvFile = null;
+      this.bulkImportError = 'Please specify a valid CSV file.';
+    }
+  }
+
+  processBulkImport() {
+    if (!this.selectedCsvFile) return;
+    this.isImporting = true;
+    this.bulkImportError = null;
+    this.bulkImportSuccess = null;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      this.parseAndUploadCsv(text);
+    };
+    reader.onerror = () => {
+      this.bulkImportError = 'Failed to read the file.';
+      this.isImporting = false;
+      this.cdr.detectChanges();
+    };
+    reader.readAsText(this.selectedCsvFile);
+  }
+
+  private parseAndUploadCsv(csvText: string) {
+    // Strip BOM if present
+    const cleanText = csvText.replace(/^\uFEFF/, '');
+    const lines = cleanText.split(/\r?\n/).filter(line => line.trim() !== '');
+
+    // Standardize date to YYYY-MM-DD for backend
+    const normalizeDate = (dateStr: string): string | null => {
+      if (!dateStr || !dateStr.trim()) return null;
+      const clean = dateStr.trim();
+
+      // Try YYYY-MM-DD (ISO)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+
+      // Try DD/MM/YYYY
+      let match = clean.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+      if (match) {
+        const d = match[1].padStart(2, '0');
+        const m = match[2].padStart(2, '0');
+        const y = match[3];
+        return `${y}-${m}-${d}`;
+      }
+
+      // Try YYYY/MM/DD
+      match = clean.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+      if (match) {
+        const y = match[1];
+        const m = match[2].padStart(2, '0');
+        const d = match[3].padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+
+      return clean; // Fallback to raw value
+    };
+
+    if (lines.length < 2) {
+      this.bulkImportError = 'CSV file is empty or missing data rows.';
+      this.isImporting = false;
+      this.cdr.detectChanges();
+      return;
+    }
+
+    // Detect separator (comma or semicolon)
+    const firstLine = lines[0];
+    const commaCount = (firstLine.match(/,/g) || []).length;
+    const semicolonCount = (firstLine.match(/;/g) || []).length;
+    const separator = semicolonCount > commaCount ? ';' : ',';
+    console.log(`ðŸ“Š CSV Detection: Using separator "${separator}" (Commas: ${commaCount}, Semicolons: ${semicolonCount})`);
+
+    // Helper for robust CSV parsing that handles quotes and spaces correctly
+    const parseCSVLine = (line: string): string[] => {
+      const rowValues: string[] = [];
+      let currentValue = '';
+      let insideQuotes = false;
+
+      for (let char of line) {
+        if (char === '"') {
+          insideQuotes = !insideQuotes;
+        } else if (char === separator && !insideQuotes) {
+          rowValues.push(currentValue.trim());
+          currentValue = '';
+        } else {
+          currentValue += char;
+        }
+      }
+      rowValues.push(currentValue.trim());
+      return rowValues;
+    };
+
+    const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().replace(/['"]/g, ''));
+    console.log('ðŸ“Š CSV Headers:', headers);
+
+    // Attempt to determine the departmentId for the supervisor
+    let deptId = (this.supervisor as any).departmentId;
+    if (!deptId && this.interns && this.interns.length > 0) {
+      deptId = this.interns[0].departmentId;
+    }
+
+    if (!deptId) {
+      this.bulkImportError = 'Could not determine your department ID. To upload interns, make sure you have at least one assigned intern or your department is fully configured.';
+      this.isImporting = false;
+      this.cdr.detectChanges();
+      return;
+    }
+
+    const internsPayload: any[] = [];
+
+    const supervisorId = (this.authService.getCurrentUserSync() as any)?.id || (this.authService.getCurrentUserSync() as any)?.supervisorId;
+
+    // Build a map of department names to IDs from existing interns
+    const deptMap = new Map<string, number>();
+    this.interns.forEach(i => {
+      if (i.department && i.departmentId) {
+        deptMap.set(i.department.toLowerCase(), i.departmentId);
+      }
+    });
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      let values: string[] = parseCSVLine(line);
+
+      if (values.length < 2) continue;
+
+      const internParams: any = { departmentId: deptId, supervisorId: supervisorId };
+      let firstName = '';
+      let surname = '';
+
+      for (let j = 0; j < headers.length; j++) {
+        const header = headers[j];
+        const val = values[j] || '';
+        if (!val) continue;
+
+        const lowHeader = header.toLowerCase();
+
+        if (lowHeader === 'name' || lowHeader === 'first name' || lowHeader === 'firstname') {
+          firstName = val;
+        } else if (lowHeader.includes('surname') || lowHeader.includes('last name') || lowHeader === 'lastname') {
+          surname = val;
+        } else if (lowHeader.includes('email')) {
+          internParams.email = val.toLowerCase();
+        } else if (lowHeader.includes('id number') || lowHeader === 'id' || lowHeader === 'idnumber') {
+          internParams.idNumber = val;
+        } else if (lowHeader.includes('start')) {
+          internParams.startDate = normalizeDate(val);
+        } else if (lowHeader.includes('end')) {
+          internParams.endDate = normalizeDate(val);
+        } else if (lowHeader.includes('employer')) {
+          internParams.employer = val;
+        } else if (lowHeader.includes('field')) {
+          internParams.field = val;
+        } else if (lowHeader.includes('department')) {
+          const foundDeptId = deptMap.get(val.toLowerCase());
+          if (foundDeptId) {
+            internParams.departmentId = foundDeptId;
+          }
+        }
+      }
+
+      // Merge name and surname
+      if (firstName && surname) {
+        internParams.name = `${firstName} ${surname}`.trim();
+      } else if (firstName) {
+        internParams.name = firstName;
+      } else if (surname) {
+        internParams.name = surname;
+      }
+
+      if (internParams.name && internParams.email) {
+        internsPayload.push(internParams);
+      }
+    }
+
+    if (internsPayload.length === 0) {
+      this.bulkImportError = 'No valid intern data found in CSV. Make sure you have "name" and "email" headers.';
+      this.isImporting = false;
+      this.cdr.detectChanges();
+      return;
+    }
+
+    this.internService.bulkCreateInterns(internsPayload, this.bulkImportPassword, this.sendInvitesAfterImport, this.forcePasswordResetAfterImport).subscribe({
+      next: (res: any) => {
+        this.bulkImportSuccess = `Successfully imported ${res.successCount} interns.`;
+        this.lastBulkImportPassword = this.bulkImportPassword;
+
+        if (res.interns && res.interns.length > 0) {
+          this.newlyImportedInterns = res.interns;
+          this.generateBulkInternInviteLink();
+          this.generateBulkInternDefaultMessage();
+
+          // Show the card after a short delay if invites were requested
+          if (this.sendInvitesAfterImport) {
+            setTimeout(() => {
+              this.showBulkInternInviteCard = true;
+              this.closeBulkImportModal();
+              this.cdr.detectChanges();
+            }, 1500);
+          }
+        }
+        if (res.errors && res.errors.length > 0) {
+          this.bulkImportError = `Some errors occurred:\n${res.errors.join('\n')}`;
+        }
+        this.isImporting = false;
+        this.cdr.detectChanges();
+
+        if (!res.errors || res.errors.length === 0) {
+          // If we're going to show the invite card, don't auto-close with the 3s timeout
+          if (!this.sendInvitesAfterImport) {
+            setTimeout(() => {
+              this.closeBulkImportModal();
+              this.loadInterns();
+              this.cdr.detectChanges();
+            }, 3000);
+          } else {
+            // Just refresh list, modal will be closed by the invite card trigger
+            this.loadInterns();
+          }
+        } else {
+          // If there are errors, we need to refresh the list to show partial successes,
+          // but we keep the modal open so the user can see the error list.
+          this.loadInterns();
+          this.cdr.detectChanges();
+        }
+      },
+      error: (err: any) => {
+        console.error('Ã¢ÂÅ’ Bulk import error:', err);
+        this.bulkImportError = err.message || err.error?.error || err.error?.message || 'Failed to import interns. Verify your data and try again.';
+        this.isImporting = false;
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  // Generate bulk intern invite link
+  generateBulkInternInviteLink(): void {
+    this.bulkInternInviteLink = window.location.origin + '/login';
+  }
+
+  // Generate default message for bulk interns
+  generateBulkInternDefaultMessage(): void {
+    this.bulkInternInviteMessage = `Hello,
+
+Welcome to the Intern Register System! You have been registered successfully.
+
+You can log in using your university email and the default password assigned during import: ${this.lastBulkImportPassword}
+
+Please use the link below to access the system:
+${this.bulkInternInviteLink}
+
+Ã¢Å¡Â Ã¯Â¸Â IMPORTANT: For security reasons, please log in and change your password immediately.
+
+Best regards,
+Supervisor`;
+  }
+
+  // Send bulk intern invites
+  sendBulkInternInvites(): void {
+    if (this.newlyImportedInterns.length === 0) return;
+
+    this.isImporting = true;
+    const invites = this.newlyImportedInterns.map(intern => ({
+      email: intern.email,
+      name: intern.name,
+      password: this.lastBulkImportPassword
+    }));
+
+    this.internService.bulkSendInvites(invites, this.bulkInternInviteMessage).subscribe({
+      next: (res) => {
+        Swal.fire({
+          icon: 'success',
+          title: 'Invitations Sent!',
+          text: `Successfully sent ${res.successCount} invitations.`,
+          timer: 3000,
+          showConfirmButton: false
+        });
+        this.isImporting = false;
+        this.showBulkInternInviteCard = false;
+      },
+      error: (err) => {
+        console.error('Error sending bulk invites:', err);
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: 'Failed to send invitations. Please try again.',
+          timer: 3000,
+          showConfirmButton: false
+        });
+        this.isImporting = false;
+      }
+    });
+  }
+
+  // Copy bulk intern invite link
+  copyBulkInternInviteLink(): void {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(this.bulkInternInviteLink).then(() => {
+        Swal.fire({
+          icon: 'success',
+          title: 'Copied!',
+          text: 'Link has been copied to clipboard.',
+          timer: 2000,
+          showConfirmButton: false
+        });
+      });
+    }
+  }
+
+  // Close bulk intern invite card
+  closeBulkInternInviteCard(): void {
+    this.showBulkInternInviteCard = false;
   }
 }

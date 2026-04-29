@@ -6,7 +6,9 @@ import { AuthService, CurrentUser } from '../services/auth.service';
 import { ApiService } from '../services/api.service';
 import { DepartmentService } from '../services/department.service';
 import { ProfileTabService } from '../services/profile-tab.service';
+import { InternService } from '../services/intern.service';
 import { Subscription } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
 import Swal from 'sweetalert2';
 import type { SweetAlertResult } from 'sweetalert2';
 
@@ -27,6 +29,9 @@ export class Profile implements OnInit {
   showNewPassword = false;
   showConfirmPassword = false;
   activeTab: 'profile' | 'password' = 'profile';
+  hasContract = false;
+  contractAgreement = '';
+  private internId: number | null = null;
   private subscriptions = new Subscription();
 
   @Input() isEmbedded: boolean = false;
@@ -37,7 +42,9 @@ export class Profile implements OnInit {
     private api: ApiService,
     private router: Router,
     public departmentService: DepartmentService,
-    private profileTabService: ProfileTabService
+    private profileTabService: ProfileTabService,
+    private internService: InternService,
+    private http: HttpClient
   ) {
     this.profileForm = this.fb.group({
       name: ['', [Validators.required, Validators.minLength(2)]],
@@ -78,6 +85,11 @@ export class Profile implements OnInit {
 
     // Mark profile as active for the navbar
     this.profileTabService.setProfileActive(true);
+
+    // If user is intern, load additional intern data (like agreement)
+    if (this.getUserRole() === 'INTERN') {
+      this.loadInternSpecificData();
+    }
   }
 
   ngOnDestroy(): void {
@@ -538,6 +550,134 @@ export class Profile implements OnInit {
 
   setActiveTab(tab: 'profile' | 'password'): void {
     this.profileTabService.setActiveTab(tab);
+  }
+
+  loadInternSpecificData(): void {
+    this.internService.getMyProfile().subscribe({
+      next: (profile) => {
+        this.internId = profile.id;
+        this.hasContract = profile.hasContract || false;
+        this.contractAgreement = profile.contractAgreement || '';
+        console.log('✓ Intern specific data loaded, ID:', this.internId, 'HasContract:', this.hasContract);
+      },
+      error: (err) => {
+        console.error('Error loading intern specific data:', err);
+        Swal.fire({
+          icon: 'error',
+          title: 'Profile Error',
+          text: 'Could not load your intern record. You may not be able to upload agreements.',
+          toast: true,
+          position: 'top-right',
+          timer: 5000,
+          showConfirmButton: false
+        });
+      }
+    });
+  }
+
+  onAgreementFileSelected(event: any): void {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!this.internId) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'Intern ID not found. Please refresh the page and try again.'
+      });
+      return;
+    }
+
+    // Check file type
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+    if (!allowedTypes.includes(file.type)) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Invalid File Type',
+        text: 'Only PDF and Images (JPG, PNG) are allowed.'
+      });
+      return;
+    }
+
+    // Check file size (5MB limit)
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      Swal.fire({
+        icon: 'error',
+        title: 'File Too Large',
+        text: 'Agreement file must be less than 5MB.'
+      });
+      return;
+    }
+
+    this.isLoading = true;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64String = reader.result as string;
+      if (this.internId) {
+        this.internService.uploadContractAgreement(this.internId, base64String).subscribe({
+          next: (response) => {
+            this.isLoading = false;
+            this.hasContract = true;
+            this.contractAgreement = base64String;
+            Swal.fire({
+              icon: 'success',
+              title: 'Agreement Uploaded!',
+              text: 'Your internship agreement has been saved.',
+              timer: 2000,
+              showConfirmButton: false
+            });
+          },
+          error: (err) => {
+            this.isLoading = false;
+            console.error('Error uploading agreement:', err);
+            Swal.fire({
+              icon: 'error',
+              title: 'Upload Failed',
+              text: 'Failed to upload agreement. Please try again.'
+            });
+          }
+        });
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  viewAgreement(): void {
+    if (!this.contractAgreement) {
+      Swal.fire({
+        icon: 'info',
+        title: 'No Agreement',
+        text: 'No agreement has been uploaded yet.'
+      });
+      return;
+    }
+
+    try {
+      const base64Content = this.contractAgreement;
+      const win = window.open();
+      if (win) {
+        if (base64Content.includes('application/pdf')) {
+          win.document.write(`<iframe src="${base64Content}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+        } else {
+          win.document.write(`<img src="${base64Content}" style="max-width: 100%; height: auto;">`);
+        }
+        win.document.title = "Internship Agreement";
+      } else {
+        Swal.fire({
+          icon: 'error',
+          title: 'Popup Blocked',
+          text: 'Please allow popups to view the agreement.'
+        });
+      }
+    } catch (e) {
+      console.error('Error viewing agreement:', e);
+      Swal.fire({
+        icon: 'error',
+        title: 'View Failed',
+        text: 'Could not open the agreement file.'
+      });
+    }
   }
 
 }

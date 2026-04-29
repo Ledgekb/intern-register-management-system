@@ -1,7 +1,8 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors, ReactiveFormsModule, FormsModule } from '@angular/forms';
 import { ApiService } from '../services/api.service';
 import { DepartmentApiService, Department } from '../services/department-api.service';
+import { PolicyService } from '../services/policy.service';
 import { Router, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { Subscription, interval } from 'rxjs';
@@ -26,6 +27,11 @@ export class SignUp implements OnInit, OnDestroy {
     signupVerificationCode: string = '';
     showSignupVerification: boolean = false;
     currentSignupStep: number = 1;
+    systemPolicyContent: string = 'Loading policies...';
+
+    contractFileBase64: string = '';
+    contractFileName: string = '';
+    contractFileError: string = '';
 
     selectedDepartment: string = '';
     departments: Department[] = [];
@@ -36,7 +42,9 @@ export class SignUp implements OnInit, OnDestroy {
         private fb: FormBuilder,
         private api: ApiService,
         private router: Router,
-        private departmentApiService: DepartmentApiService
+        private departmentApiService: DepartmentApiService,
+        private policyService: PolicyService,
+        private cdr: ChangeDetectorRef
     ) {
         this.signupForm = this.fb.group({
             name: ['', [Validators.required, Validators.minLength(2), Validators.pattern(/^[a-zA-Z\s]+$/)]],
@@ -60,8 +68,15 @@ export class SignUp implements OnInit, OnDestroy {
 
     ngOnInit(): void {
         this.loadDepartments();
-    }
 
+        this.policyService.policy$.subscribe(policy => {
+            if (policy && policy.content) {
+                this.systemPolicyContent = policy.content;
+            } else {
+                this.systemPolicyContent = 'Terms and policies could not be loaded at this time. Please contact administration.';
+            }
+        });
+    }
     ngOnDestroy(): void {
         if (this.signupTimerSub) {
             this.signupTimerSub.unsubscribe();
@@ -118,6 +133,8 @@ export class SignUp implements OnInit, OnDestroy {
                 isValid = false;
             }
         });
+
+        // Removed contract agreement mandatory validation as per user request
         if (isValid) {
             this.currentSignupStep = 2;
         } else {
@@ -145,9 +162,18 @@ export class SignUp implements OnInit, OnDestroy {
                 this.signupVerificationCode = res.code || '';
                 this.signupCountdown = 60;
                 this.signupTimerSub = interval(1000).pipe(take(60)).subscribe({
-                    next: () => this.signupCountdown--,
+                    next: () => {
+                        this.signupCountdown--;
+                        this.cdr.detectChanges(); // Update UI in real-time
+                        if (this.signupCountdown === 0) {
+                            this.cdr.detectChanges(); // Ensure final state
+                        }
+                    },
                     complete: () => {
-                        this.isSignupCodeSent = false;
+                        // Keep isSignupCodeSent true so the code stays visible but with a Resend button
+                        console.log('Signup countdown completed');
+                        this.signupCountdown = 0;
+                        this.cdr.detectChanges(); // Final check
                     }
                 });
                 Swal.fire({ icon: 'success', title: 'Code Sent!', text: 'Please check your email for the verification code.' });
@@ -181,13 +207,17 @@ export class SignUp implements OnInit, OnDestroy {
             endDate: formData.endDate
         };
 
+        if (this.contractFileBase64) {
+            (regData as any).contractAgreement = this.contractFileBase64;
+        }
+
         this.api.post('auth/register', regData).subscribe({
             next: () => {
                 this.isSignupSubmitting = false;
                 Swal.fire({
                     icon: 'success',
                     title: 'Registration Successful!',
-                    text: 'Your account has been created. Please log in.'
+                    text: 'Your account has been created. It is now pending approval from an administrator or supervisor. You will be able to log in once approved.'
                 }).then(() => {
                     this.router.navigate(['/login']);
                 });
@@ -250,6 +280,30 @@ export class SignUp implements OnInit, OnDestroy {
         }
     }
 
+    onContractFileChange(event: any): void {
+        const file = event.target.files[0];
+        if (file) {
+            // Validate file size (e.g. max 5MB)
+            if (file.size > 5 * 1024 * 1024) {
+                this.contractFileError = 'File size must be less than 5MB';
+                this.contractFileName = '';
+                this.contractFileBase64 = '';
+                return;
+            }
+            this.contractFileError = '';
+            this.contractFileName = file.name;
+
+            const reader = new FileReader();
+            reader.onload = (e: any) => {
+                this.contractFileBase64 = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        } else {
+            this.contractFileName = '';
+            this.contractFileBase64 = '';
+        }
+    }
+
     onIdNumberInput(event: Event): void {
         const input = event.target as HTMLInputElement;
         const val = input.value.replace(/\D/g, '').substring(0, 13);
@@ -281,16 +335,9 @@ export class SignUp implements OnInit, OnDestroy {
     openTermsModal(): void {
         // Note: Recreating original behavior where this might have been a simple Swal or a modal
         Swal.fire({
-            title: 'Terms & Conditions',
+            title: 'Terms & Conditions / System Policy',
             html: `
-        <div style="text-align: left; max-height: 400px; overflow-y: auto; font-size: 0.9rem;">
-          <h6>1. Introduction</h6>
-          <p>By registering, you agree to comply with Univen's internship rules.</p>
-          <h6>2. Data Privacy</h6>
-          <p>Your data is used solely for internship registration and management.</p>
-          <h6>3. Conduct</h6>
-          <p>Professional conduct is expected at all times during the internship.</p>
-        </div>
+        <div style="text-align: left; max-height: 400px; overflow-y: auto; font-size: 0.9rem; padding: 10px; white-space: pre-wrap;">${this.systemPolicyContent}</div>
       `,
             confirmButtonText: 'I Understand',
             confirmButtonColor: '#1e3a5f'

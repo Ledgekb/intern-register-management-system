@@ -16,6 +16,7 @@ export interface LeaveRequest {
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   leaveType?: 'ANNUAL' | 'SICK' | 'PERSONAL' | 'EMERGENCY';
   document?: string;
+  viewedBySupervisor?: boolean;
 }
 
 export interface LeaveRequestCreate {
@@ -130,6 +131,13 @@ export class LeaveRequestService {
    */
   downloadAttachment(filename: string): Observable<Blob> {
     return this.api.downloadFile(`leave/attachment/${filename}`);
+  }
+
+  /**
+   * Mark leave request as seen by supervisor
+   */
+  markAsSeen(id: number): Observable<any> {
+    return this.api.put(`leave/${id}/seen`, {});
   }
 }
 

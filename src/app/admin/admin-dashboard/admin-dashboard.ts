@@ -8,8 +8,6 @@ import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
-import { StorageService } from '../../services/storage.service';
-import { DepartmentService } from '../../services/department.service';
 import { DepartmentApiService, Department } from '../../services/department-api.service';
 import { InternService, InternResponse } from '../../services/intern.service';
 import { SupervisorService } from '../../services/supervisor.service';
@@ -18,16 +16,19 @@ import { AttendanceService } from '../../services/attendance.service';
 import { ReportService } from '../../services/report.service';
 import { AdminService, AdminUser } from '../../services/admin.service';
 import { DataPreloadService } from '../../services/data-preload.service';
-import { LocationService, Location } from '../../services/location.service';
+import { LocationService, Location as SystemLocation } from '../../services/location.service';
 import { SidebarService } from '../../services/sidebar.service';
 import { ApiService, API_BASE_URL } from '../../services/api.service';
+import { StorageService } from '../../services/storage.service';
+import { DepartmentService } from '../../services/department.service';
 import { Profile } from '../../profile/profile';
 import { LoadingComponent } from '../../shared/components/loading/loading.component';
 import { LogHistoryComponent } from '../../shared/components/log-history/log-history.component';
-import { WebSocketService } from '../../services/websocket.service';
+import { WebSocketService, WebSocketMessage } from '../../services/websocket.service';
 import { ProfileTabService } from '../../services/profile-tab.service';
 import { Subscription, forkJoin, of } from 'rxjs';
 import { map, catchError } from 'rxjs/operators';
+import { ActivityLogService } from '../../services/activity-log.service';
 import Swal from 'sweetalert2';
 import type { SweetAlertResult } from 'sweetalert2';
 
@@ -82,6 +83,7 @@ interface EditSupervisorForm {
 // Edit intern form interface
 interface EditInternForm {
   name: string;
+  surname: string;
   email: string;
   idNumber?: string;
   startDate?: string;
@@ -131,21 +133,22 @@ interface Intern {
       timeOut?: Date;
     };
   };
+  hasLoggedIn?: boolean;
 }
 
 interface Admin {
   name: string;
   email: string;
   role: string;
-  Department: string | null; // ✅ Department name (from backend database, selected by super admin)
-  departmentId?: number | null; // ✅ Department ID (for backend operations)
-  field?: string | null; // ✅ Field name if applicable
+  Department: string | null; // Ã¢Å“â€¦ Department name (from backend database, selected by super admin)
+  departmentId?: number | null; // Ã¢Å“â€¦ Department ID (for backend operations)
+  field?: string | null; // Ã¢Å“â€¦ Field name if applicable
 }
 
 // Location interface is now imported from LocationService
 
 // ===== Typed dashboard sections =====
-type DashboardSection = 'overview' | 'Manage Field' | 'Supervisor' | 'interns' | 'Intern Leave status' | 'Attendance history' | 'reports' | 'Locations' | 'profile' | 'logs';
+type DashboardSection = 'overview' | 'Manage Field' | 'Supervisor' | 'interns' | 'Intern Leave status' | 'Attendance history' | 'reports' | 'Locations' | 'profile' | 'logs' | 'Pending Approvals';
 
 // ===== Component =====
 @Component({
@@ -166,6 +169,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
   // ===== Admin Info =====
   admin: Admin | null = null;
   isProfileActive: boolean = false;
+  hasSystemErrors: boolean = false;
 
   // ===== Loading States =====
   isLoading: boolean = true; // Global loading state
@@ -186,29 +190,20 @@ export class AdminDashboard implements OnInit, OnDestroy {
   sections: DashboardSection[] = ['overview', 'Manage Field', 'Supervisor', 'interns', 'Intern Leave status', 'Attendance history', 'reports', 'Locations'];
   activeSection: DashboardSection = 'overview';
 
-  // Constant mapping for template-safe comparisons
-  Section = {
-    Overview: 'overview' as DashboardSection,
-    Departments: 'Manage Field' as DashboardSection,
-    Supervisor: 'Supervisor' as DashboardSection,
-    Interns: 'interns' as DashboardSection,
-    Leave: 'Intern Leave status' as DashboardSection,
-    History: 'Attendance history' as DashboardSection,
-    Reports: 'reports' as DashboardSection,
-    Locations: 'Locations' as DashboardSection,
-  };
+  locations: SystemLocation[] = []; // Used SystemLocation alias to avoid conflict with browser Location
 
-  // Navigation items with icons
-  navigationItems: Array<{ id: DashboardSection; label: string; icon: string }> = [
+  navigationItems: any[] = [];
+  
+  private baseNavigationItems = [
     { id: 'overview', label: 'Dashboard', icon: 'bi bi-grid-3x3-gap' },
+    { id: 'Pending Approvals', label: 'Pending Approvals', icon: 'bi bi-person-plus-fill' },
     { id: 'Manage Field', label: 'Fields', icon: 'bi bi-building' },
     { id: 'Supervisor', label: 'Supervisors', icon: 'bi bi-person-badge' },
     { id: 'interns', label: 'Interns', icon: 'bi bi-people-fill' },
     { id: 'Intern Leave status', label: 'Leave Status', icon: 'bi bi-calendar-check' },
     { id: 'Attendance history', label: 'History', icon: 'bi bi-clock-history' },
     { id: 'reports', label: 'Reports', icon: 'bi bi-file-earmark-text' },
-    { id: 'Locations', label: 'Locations', icon: 'bi bi-geo-alt-fill' },
-    { id: 'logs', label: 'Log History', icon: 'bi bi-journal-text' }
+    { id: 'Locations', label: 'Locations', icon: 'bi bi-geo-alt-fill' }
   ];
 
 
@@ -279,6 +274,22 @@ export class AdminDashboard implements OnInit, OnDestroy {
     });
   }
 
+
+  private checkSystemErrors(): void {
+    if (this.logService) {
+      this.logService.hasRecentErrors().subscribe((hasErrors: boolean) => {
+        this.hasSystemErrors = hasErrors;
+        this.updateNavigationItems();
+      });
+    }
+  }
+
+
+  private updateNavigationItems(): void {
+    this.navigationItems = [...this.baseNavigationItems];
+    this.cdr.detectChanges();
+  }
+
   public toggleSidebar(): void {
     if (this.sidebarService) {
       this.sidebarService.toggleSidebar();
@@ -286,6 +297,62 @@ export class AdminDashboard implements OnInit, OnDestroy {
   }
 
   // ===== Overview Stats =====
+  get newlyCreatedInterns(): Intern[] {
+    // Interns are "newly created" (pending onboarding) if they are active but have never logged in
+    // We treat hasLoggedIn as false if it's explicitly false or null/undefined
+    return this.interns.filter(i => i.active !== false && i.hasLoggedIn !== true);
+  }
+
+  resendInternInvite(intern: any) {
+    if (!intern.email) return;
+
+    Swal.fire({
+      title: 'Resend Invitation?',
+      text: `Are you sure you want to resend the invitation email to ${intern.name}?`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, Send Invite',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#1e3a5f',
+      cancelButtonColor: '#6c757d'
+    }).then((result: SweetAlertResult) => {
+      if (result.isConfirmed) {
+        // Show loading
+        Swal.fire({
+          title: 'Sending Invite...',
+          allowOutsideClick: false,
+          didOpen: () => {
+            Swal.showLoading();
+          }
+        });
+
+        // Use bulkSendInvites for a single intern for simplicity/reusability
+        const inviteData = [{
+          email: intern.email,
+          name: intern.name
+        }];
+
+        const defaultMessage = `Welcome to the Univen Intern Register. Please use your email to log in for the first time.`;
+
+        this.internService.bulkSendInvites(inviteData, defaultMessage).subscribe({
+          next: () => {
+            Swal.fire({
+              icon: 'success',
+              title: 'Sent!',
+              text: `Invitation sent to ${intern.email}`,
+              timer: 2000,
+              showConfirmButton: false
+            });
+          },
+          error: (error) => {
+            console.error('Error sending invite:', error);
+            Swal.fire('Error', error.error?.message || 'Failed to send invitation.', 'error');
+          }
+        });
+      }
+    });
+  }
+
   get overviewStats(): OverviewStat[] {
     const totalActiveInterns = this.interns.filter(i => i.active !== false).length;
     const presentCount = this.interns.filter(i => i.status === 'Present' && i.active !== false).length;
@@ -576,7 +643,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
   }
 
   addFieldToDepartment() {
-    // ✅ CRITICAL: Always use admin's department from backend (selected by super admin)
+    // Ã¢Å“â€¦ CRITICAL: Always use admin's department from backend (selected by super admin)
     // Don't rely on dropdown selection - use the admin's actual department
     const deptName = this.adminDepartment;
 
@@ -597,7 +664,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
 
     const fieldName = this.newFieldName.trim();
 
-    // ✅ Find the department using admin's department ID (selected by super admin)
+    // Ã¢Å“â€¦ Find the department using admin's department ID (selected by super admin)
     // This ensures fields are always created in the correct department
     let department = null;
 
@@ -623,7 +690,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
       return;
     }
 
-    // ✅ Verify we're using the admin's assigned department
+    // Ã¢Å“â€¦ Verify we're using the admin's assigned department
     if (this.adminDepartmentId && department.id !== this.adminDepartmentId) {
       console.warn('Department ID mismatch. Using admin department ID instead.');
       const adminDept = this.departments.find(dept => dept.id === this.adminDepartmentId);
@@ -632,7 +699,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
       }
     }
 
-    // ✅ Type guard: Ensure department.id is defined before using it
+    // Ã¢Å“â€¦ Type guard: Ensure department.id is defined before using it
     // This fixes TypeScript error: department.id might be undefined
     if (!department.id || typeof department.id !== 'number') {
       Swal.fire('Error', 'Department ID is missing. Please refresh and try again.', 'error');
@@ -640,7 +707,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
       return;
     }
 
-    // ✅ Explicit type assertion after type guard - TypeScript now knows department.id is a number
+    // Ã¢Å“â€¦ Explicit type assertion after type guard - TypeScript now knows department.id is a number
     const departmentId: number = department.id as number;
 
     console.log('Creating field in department:', {
@@ -657,7 +724,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
       return;
     }
 
-    // ✅ Use backend API to add field - departmentId is now guaranteed to be a number
+    // Ã¢Å“â€¦ Use backend API to add field - departmentId is now guaranteed to be a number
     this.departmentApiService.addFieldToDepartment(departmentId, fieldName).subscribe({
       next: (updatedDepartment) => {
         console.log('Field added successfully, updated department:', updatedDepartment);
@@ -1078,6 +1145,15 @@ export class AdminDashboard implements OnInit, OnDestroy {
     return Math.ceil(this.filteredAttendance.length / this.attendancePerPage) || 1;
   }
 
+  get totalAbsentPages(): number {
+    return this.totalAttendancePages;
+  }
+
+  get paginatedAbsentInterns(): AttendanceRecord[] {
+    return this.paginatedAttendance;
+  }
+
+
   prevAttendancePage() {
     if (this.attendancePage > 1) this.attendancePage--;
   }
@@ -1241,6 +1317,10 @@ export class AdminDashboard implements OnInit, OnDestroy {
   // ===== Updated filteredInterns Getter =====
   get filteredInterns(): Intern[] {
     return this.interns
+      // Exclude CSV-imported / admin-created interns who have never logged in â€”
+      // those are shown in the "Pending Onboarding" table via newlyCreatedInterns.
+      // An intern is only fully "onboarded" once hasLoggedIn is explicitly true.
+      .filter(i => i.hasLoggedIn === true)
       .filter(i => {
         if (this.internSearch) {
           const searchLower = this.internSearch.toLowerCase();
@@ -1285,6 +1365,48 @@ export class AdminDashboard implements OnInit, OnDestroy {
     return this.interns.filter(i => i.active !== false).length;
   }
 
+  // ===== Total Interns Modal Pagination =====
+  totalInternsPage: number = 1;
+  totalInternsModalItemsPerPage: number = 10;
+
+  get filteredTotalInternsModal(): Intern[] {
+    return this.interns.filter(intern => {
+      const matchesSearch = !this.internSearch ||
+        intern.name.toLowerCase().includes(this.internSearch.toLowerCase()) ||
+        intern.email.toLowerCase().includes(this.internSearch.toLowerCase());
+
+      const matchesDept = !this.internFilterDepartment ||
+        intern.department === this.internFilterDepartment;
+
+      const matchesField = !this.internFilterField ||
+        intern.field === this.internFilterField;
+
+      return matchesSearch && matchesDept && matchesField;
+    });
+  }
+
+  get paginatedTotalInternsModal(): Intern[] {
+    const startIndex = (this.totalInternsPage - 1) * this.totalInternsModalItemsPerPage;
+    return this.filteredTotalInternsModal.slice(startIndex, startIndex + this.totalInternsModalItemsPerPage);
+  }
+
+  get totalInternsModalPages(): number {
+    return Math.ceil(this.filteredTotalInternsModal.length / this.totalInternsModalItemsPerPage) || 1;
+  }
+
+  prevTotalInternsPage() {
+    if (this.totalInternsPage > 1) {
+      this.totalInternsPage--;
+    }
+  }
+
+  nextTotalInternsPage() {
+    if (this.totalInternsPage < this.totalInternsModalPages) {
+      this.totalInternsPage++;
+    }
+  }
+
+
   prevInternPage() {
     if (this.internCurrentPage > 1) this.internCurrentPage--;
   }
@@ -1328,7 +1450,155 @@ export class AdminDashboard implements OnInit, OnDestroy {
     return pages;
   }
 
+  getInitials(name: string): string {
+    if (!name) return '';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].substring(0, 1).toUpperCase();
+    return (parts[0].substring(0, 1) + parts[parts.length - 1].substring(0, 1)).toUpperCase();
+  }
+
+  viewInternContract(intern: any) {
+    if (!intern.id) return;
+    this.internService.getInternContractAgreement(intern.id).subscribe({
+      next: (res: any) => {
+        if (res && res.contractAgreement) {
+          const base64Data = res.contractAgreement;
+
+          let mimeType = 'application/pdf'; // Default
+          if (base64Data.startsWith('data:image/')) {
+            const match = base64Data.match(/data:(image\/[a-zA-Z]+);base64,/);
+            if (match && match.length > 1) {
+              mimeType = match[1];
+            }
+          }
+
+          const base64Content = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+
+          try {
+            const byteCharacters = atob(base64Content);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: mimeType });
+
+            const url = window.URL.createObjectURL(blob);
+            window.open(url, '_blank');
+            setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+          } catch (e) {
+            console.error('Error decoding base64 contract:', e);
+            Swal.fire('Error', 'Failed to read contract document format.', 'error');
+          }
+        } else {
+          Swal.fire('Not Found', 'This intern does not have a contract agreement uploaded.', 'info');
+        }
+      },
+      error: (err) => {
+        console.error('Error fetching contract agreement:', err);
+        Swal.fire('Error', 'Failed to fetch contract document.', 'error');
+      }
+    });
+  }
+
+  get pendingInterns(): Intern[] {
+    return this.interns.filter(i => i.active === false);
+  }
+
+  approveIntern(intern: any) {
+    if (!intern.id) return;
+
+    Swal.fire({
+      title: 'Approve Intern?',
+      text: `Are you sure you want to approve and activate the registration for ${intern.name}?`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#28a745',
+      cancelButtonColor: '#6c757d',
+      confirmButtonText: 'Yes, Approve',
+      cancelButtonText: 'Cancel'
+    }).then((result: SweetAlertResult) => {
+      if (result.isConfirmed) {
+        this.internService.activateIntern(intern.id!).subscribe({
+          next: () => {
+            const index = this.interns.findIndex(i => i.id === intern.id);
+            if (index !== -1) {
+              this.interns[index].active = true;
+              this.interns = [...this.interns]; // Trigger change detection
+            }
+            this.cdr.detectChanges();
+
+            Swal.fire({
+              icon: 'success',
+              title: 'Approved!',
+              text: `Intern "${intern.name}" has been approved and activated.`,
+              timer: 2000,
+              showConfirmButton: false
+            });
+          },
+          error: (error) => {
+            console.error('Error approving intern:', error);
+            Swal.fire({
+              icon: 'error',
+              title: 'Approval Failed',
+              text: error.error?.message || 'Failed to approve intern.'
+            });
+          }
+        });
+      }
+    });
+  }
+
+  rejectIntern(intern: any) {
+    if (!intern.id) return;
+
+    Swal.fire({
+      title: 'Reject Intern Registration?',
+      text: `Are you sure you want to reject and delete the registration for ${intern.name}? This action cannot be undone.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#6c757d',
+      confirmButtonText: 'Yes, Reject & Delete',
+      cancelButtonText: 'Cancel'
+    }).then((result: SweetAlertResult) => {
+      if (result.isConfirmed) {
+        this.internService.deleteIntern(intern.id!).subscribe({
+          next: () => {
+            // Remove from local array
+            this.interns = this.interns.filter(i => i.id !== intern.id);
+            this.cdr.detectChanges();
+
+            Swal.fire({
+              icon: 'success',
+              title: 'Rejected!',
+              text: `Registration for "${intern.name}" has been rejected and deleted.`,
+              timer: 2000,
+              showConfirmButton: false
+            });
+          },
+          error: (error) => {
+            console.error('Error rejecting intern:', error);
+            Swal.fire({
+              icon: 'error',
+              title: 'Rejection Failed',
+              text: error.error?.message || 'Failed to reject and delete intern.'
+            });
+          }
+        });
+      }
+    });
+  }
+
+  activateIntern(intern: any) {
+    this.deactivateIntern(intern);
+  }
+
   // ===== Filter helper =====
+
+
+
+
   updateFilteredInterns() {
     this.internCurrentPage = 1;
     this.filteredFieldsForInterns = this.internFilterDepartment ? this.fieldMap[this.internFilterDepartment] || [] : [];
@@ -1667,16 +1937,16 @@ export class AdminDashboard implements OnInit, OnDestroy {
           // Only mark as shown if not forced (prevents multiple alerts for same requests)
           this.alertShownThisSession = true;
         }
-        console.log('[Leave Alert] ✅ Showing alert for', newRequests.length, 'new request(s)');
+        console.log('[Leave Alert] Ã¢Å“â€¦ Showing alert for', newRequests.length, 'new request(s)');
         // Small delay to ensure UI is ready
         setTimeout(() => {
           this.showNewLeaveRequestAlert(newRequests);
         }, 1000);
       } else {
-        console.log('[Leave Alert] ⚠️ Alert already shown this session, skipping');
+        console.log('[Leave Alert] Ã¢Å¡Â Ã¯Â¸Â Alert already shown this session, skipping');
       }
     } else {
-      console.log('[Leave Alert] ℹ️ No new requests to show');
+      console.log('[Leave Alert] Ã¢â€žÂ¹Ã¯Â¸Â No new requests to show');
     }
   }
 
@@ -2494,7 +2764,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
 
   // ===== Helpers =====
   /**
-   * ✅ Open edit intern modal (Bootstrap modal like supervisor)
+   * Ã¢Å“â€¦ Open edit intern modal (Bootstrap modal like supervisor)
    */
   openEditInternModal(intern: Intern): void {
     this.editingIntern = intern;
@@ -2511,21 +2781,32 @@ export class AdminDashboard implements OnInit, OnDestroy {
 
     this.editInternForm = {
       name: intern.name || '',
+      surname: '', // Initially empty, will be split if possible
       email: intern.email || '',
       idNumber: intern.idNumber || undefined,
       startDate: intern.startDate || undefined,
       endDate: intern.endDate || undefined,
       supervisor: intern.supervisor || '',
       supervisorId: supervisorId || undefined,
-      employer: intern.employer || undefined, // ✅ From backend database
+      employer: intern.employer || undefined, // Ã¢Å“â€¦ From backend database
       department: intern.department || '',
       departmentId: departmentId || undefined,
       field: intern.field || '',
-      status: intern.status || 'Present' // ✅ From backend database
+      status: intern.status || 'Present' // Ã¢Å“â€¦ From backend database
     };
 
-    // ✅ Log to verify data is being loaded
-    console.log('✅ Edit Intern Modal - Data loaded from backend:', {
+    // Ã¢Å“â€¦ Robust surname check: If name has two words, split it
+    if (this.editInternForm.name.includes(' ')) {
+      const nameParts = this.editInternForm.name.trim().split(/\s+/);
+      if (nameParts.length > 1) {
+        this.editInternForm.name = nameParts[0];
+        this.editInternForm.surname = nameParts.slice(1).join(' ');
+        console.log('Ã°Å¸â€™Â¡ Auto-split intern name into name and surname');
+      }
+    }
+
+    // Ã¢Å“â€¦ Log to verify data is being loaded
+    console.log('Ã¢Å“â€¦ Edit Intern Modal - Data loaded from backend:', {
       employer: this.editInternForm.employer,
       status: this.editInternForm.status,
       internData: {
@@ -2538,13 +2819,14 @@ export class AdminDashboard implements OnInit, OnDestroy {
   }
 
   /**
-   * ✅ Close edit intern modal
+   * Ã¢Å“â€¦ Close edit intern modal
    */
   closeEditInternModal(): void {
     this.showEditInternModal = false;
     this.editingIntern = null;
     this.editInternForm = {
       name: '',
+      surname: '',
       email: '',
       idNumber: undefined,
       startDate: undefined,
@@ -2560,7 +2842,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
   }
 
   /**
-   * ✅ Update intern details
+   * Ã¢Å“â€¦ Update intern details
    */
   updateInternField(): void {
     if (!this.editingIntern) {
@@ -2605,7 +2887,11 @@ export class AdminDashboard implements OnInit, OnDestroy {
       return;
     }
 
+    // Ã¢Å“â€¦ Combine name and surname for backend storage (backend only has one 'name' column)
+    const fullName = (this.editInternForm.name.trim() + ' ' + this.editInternForm.surname.trim()).trim();
+
     const updateData: any = {
+      name: fullName,
       field: this.editInternForm.field.trim(),
       status: this.editInternForm.status
     };
@@ -2821,6 +3107,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
   editingIntern: Intern | null = null;
   editInternForm: EditInternForm = {
     name: '',
+    surname: '',
     email: '',
     supervisor: '',
     supervisorId: undefined,
@@ -2835,10 +3122,16 @@ export class AdminDashboard implements OnInit, OnDestroy {
 
   // Invite link card
   showInviteCard: boolean = false;
+  showBulkInternInviteCard: boolean = false;
+  bulkInternInviteMessage: string = '';
+  bulkInternInviteLink: string = '';
+  newlyImportedInterns: any[] = [];
+  lastBulkImportPassword: string = '';
   newlyCreatedSupervisor: Supervisor | null = null;
   inviteLink: string = '';
   inviteMessage: string = '';
   supervisorPassword: string = ''; // Store password temporarily for the message
+  lastInvitedSupervisorEmail: string = ''; // Track which email the password belongs to
 
   // Expose Math for template
   Math = Math;
@@ -3118,6 +3411,16 @@ export class AdminDashboard implements OnInit, OnDestroy {
       password: '',
       confirmPassword: ''
     };
+
+    // Ã¢Å“â€¦ Robust surname check: If surname is empty but name has two words, split it
+    if (!this.editSupervisorForm.surname && this.editSupervisorForm.name.includes(' ')) {
+      const nameParts = this.editSupervisorForm.name.trim().split(/\s+/);
+      if (nameParts.length > 1) {
+        this.editSupervisorForm.name = nameParts[0];
+        this.editSupervisorForm.surname = nameParts.slice(1).join(' ');
+        console.log('Ã°Å¸â€™Â¡ Auto-split supervisor name into name and surname');
+      }
+    }
     this.showEditSupervisorPassword = false;
     this.showEditSupervisorConfirmPassword = false;
     this.lastEditSupervisorEmailValue = '';
@@ -3176,7 +3479,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
   }
 
   /**
-   * ✅ Handle department change in edit supervisor modal
+   * Ã¢Å“â€¦ Handle department change in edit supervisor modal
    * Clears the field when department changes and updates available fields
    */
   onEditSupervisorDepartmentChange(departmentId: number | undefined): void {
@@ -3184,7 +3487,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
     this.editSupervisorForm.field = undefined;
 
     // Log for debugging
-    console.log('✅ Edit Supervisor - Department changed:', {
+    console.log('Ã¢Å“â€¦ Edit Supervisor - Department changed:', {
       departmentId: departmentId,
       availableFields: this.getFieldsForDepartment(departmentId).length
     });
@@ -3231,7 +3534,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
       return;
     }
 
-    // ✅ Validate password if provided
+    // Ã¢Å“â€¦ Validate password if provided
     if (this.editSupervisorForm.password || this.editSupervisorForm.confirmPassword) {
       if (!this.editSupervisorForm.password || this.editSupervisorForm.password.trim().length === 0) {
         Swal.fire({
@@ -3262,9 +3565,11 @@ export class AdminDashboard implements OnInit, OnDestroy {
     }
 
     this.loading = true;
+    // Ã¢Å“â€¦ Combine name and surname for backend storage (backend only has one 'name' column)
+    const fullName = (this.editSupervisorForm.name.trim() + ' ' + this.editSupervisorForm.surname.trim()).trim();
+
     const updateData: any = {
-      name: this.editSupervisorForm.name.trim(),
-      surname: this.editSupervisorForm.surname.trim(),
+      name: fullName,
       email: this.editSupervisorForm.email.trim()
     };
 
@@ -3280,7 +3585,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
       updateData.field = this.editSupervisorForm.field;
     }
 
-    // ✅ Add password if provided
+    // Ã¢Å“â€¦ Add password if provided
     if (this.editSupervisorForm.password && this.editSupervisorForm.password.trim().length > 0) {
       updateData.password = this.editSupervisorForm.password.trim();
     }
@@ -3617,11 +3922,10 @@ export class AdminDashboard implements OnInit, OnDestroy {
 
 
   // ===== Locations Management =====
-  locations: Location[] = [];
   isLoadingLocations: boolean = false;
   map: any = null;
   mapMarkers: any[] = [];
-  selectedLocation: Location | null = null;
+  selectedLocation: SystemLocation | null = null;
   isMapReady: boolean = false;
   selectedLat: number = -22.9756; // University of Venda coordinates
   selectedLng: number = 30.4414;
@@ -3688,10 +3992,10 @@ export class AdminDashboard implements OnInit, OnDestroy {
       // Initialize Leaflet map centered on University of Venda
       this.map = L.map(mapElement).setView([-22.9756, 30.4414], 16);
 
-      // Add OpenStreetMap tile layer
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '', // Remove attribution message
-        maxZoom: 19
+      // Add Google Maps Hybrid tile layer (Satellite + Labels)
+      L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        attribution: '&copy; Google Maps',
+        maxZoom: 20
       }).addTo(this.map);
 
       // Add click listener to map
@@ -3713,7 +4017,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
     }
   }
 
-  onMapClick(event: any) {
+  async onMapClick(event: any) {
     this.selectedLat = event.latlng.lat;
     this.selectedLng = event.latlng.lng;
 
@@ -3721,6 +4025,31 @@ export class AdminDashboard implements OnInit, OnDestroy {
     if (this.interns.length === 0) {
       this.loadInterns();
     }
+
+    // Show loading state while reverse geocoding
+    Swal.fire({
+      title: 'Detecting Location...',
+      html: 'Looking up building names from satellite coordinates...<br><br><div class="spinner-border text-primary" role="status"></div>',
+      allowOutsideClick: false,
+      showConfirmButton: false
+    });
+
+    let detectedName = '';
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${this.selectedLat}&lon=${this.selectedLng}&zoom=18&addressdetails=1`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.address) {
+          detectedName = data.address.amenity || data.address.building || data.address.office || data.address.university || data.address.road || data.name || '';
+        } else if (data && data.name) {
+          detectedName = data.name;
+        }
+      }
+    } catch (e) {
+      console.warn('Reverse geocoding failed', e);
+    }
+    
+    Swal.close();
 
     // Show input dialog for location name with intern assignment option
     const internOptions = this.interns
@@ -3734,7 +4063,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
         <div class="text-start">
           <div class="mb-3">
             <label for="locationName" class="form-label fw-semibold">Location Name <span class="text-danger">*</span></label>
-            <input type="text" id="locationName" class="form-control" placeholder="e.g., Building A, Library, etc." required>
+            <input type="text" id="locationName" class="form-control" placeholder="e.g., Building A, Library, etc." value="${detectedName}" required>
           </div>
           <div class="mb-3">
             <label for="locationRadius" class="form-label fw-semibold">Radius (meters) <span class="text-danger">*</span></label>
@@ -3814,9 +4143,9 @@ export class AdminDashboard implements OnInit, OnDestroy {
     };
 
     this.locationService.createLocation(locationData).subscribe({
-      next: (savedLocation: Location) => {
+      next: (savedLocation: SystemLocation) => {
         // Map backend response to frontend format
-        const newLocation: Location = {
+        const newLocation: SystemLocation = {
           id: savedLocation.locationId || savedLocation.id,
           locationId: savedLocation.locationId || savedLocation.id,
           name: savedLocation.name,
@@ -3880,7 +4209,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
           showConfirmButton: false
         });
 
-        console.log('✓ Location assigned to intern:', {
+        console.log('Ã¢Å“â€œ Location assigned to intern:', {
           internId,
           internName: intern?.name,
           locationId,
@@ -4065,8 +4394,8 @@ export class AdminDashboard implements OnInit, OnDestroy {
       this.mapMarkers.push(marker);
     });
 
-    // Fit map to show all locations and current location
-    if (this.locations.length > 0 || this.currentLocation) {
+    // Fit map to show all locations (ignoring user location for bounds to avoid zooming out too far)
+    if (this.locations.length > 0) {
       const boundsPoints: [number, number][] = [];
 
       // Add all location points
@@ -4074,19 +4403,14 @@ export class AdminDashboard implements OnInit, OnDestroy {
         boundsPoints.push([loc.latitude, loc.longitude]);
       });
 
-      // Add current location if available
-      if (this.currentLocation) {
-        boundsPoints.push([this.currentLocation.lat, this.currentLocation.lng]);
-      }
-
       if (boundsPoints.length > 0) {
         const bounds = L.latLngBounds(boundsPoints);
-        this.map.fitBounds(bounds, { padding: [20, 20] });
+        this.map.fitBounds(bounds, { maxZoom: 16, padding: [20, 20] });
       }
     }
   }
 
-  deleteLocation(location: Location) {
+  deleteLocation(location: SystemLocation) {
     Swal.fire({
       title: `Delete "${location.name}"?`,
       text: "This location will be removed permanently.",
@@ -4127,7 +4451,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
     });
   }
 
-  editLocation(location: Location) {
+  editLocation(location: SystemLocation) {
     // Ensure interns are loaded
     if (this.interns.length === 0) {
       this.loadInterns();
@@ -4215,7 +4539,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
         };
 
         this.locationService.updateLocation(locationId, updateData).subscribe({
-          next: (updatedLocation: Location) => {
+          next: (updatedLocation: SystemLocation) => {
             // Update location in local array
             const index = this.locations.findIndex(l => (l.locationId || l.id) === locationId);
             if (index !== -1) {
@@ -4284,8 +4608,12 @@ export class AdminDashboard implements OnInit, OnDestroy {
     private sidebarService: SidebarService,
     private webSocketService: WebSocketService,
     private profileTabService: ProfileTabService,
-    private datePipe: DatePipe
-  ) { }
+    private datePipe: DatePipe,
+    private logService: ActivityLogService
+  ) {
+    // Initialize navigation items
+    this.navigationItems = [...this.baseNavigationItems];
+  }
 
   // Admin's department ID for filtering
   adminDepartmentId: number | undefined = undefined;
@@ -4294,13 +4622,13 @@ export class AdminDashboard implements OnInit, OnDestroy {
    * Subscribe to real-time updates via WebSocket
    */
   private subscribeToRealTimeUpdates(): void {
-    console.log('🔌 Subscribing to real-time updates in Admin Dashboard...');
+    console.log('Ã°Å¸â€Å’ Subscribing to real-time updates in Admin Dashboard...');
 
     // Subscribe to Leave Request updates
     this.subscriptions.add(
       this.dataPreloadService.getUpdateObservable('leaveRequests').subscribe(updatedRequests => {
         if (updatedRequests) {
-          console.log('🔄 Real-time update: Leave Requests updated', updatedRequests.length);
+          console.log('Ã°Å¸â€â€ž Real-time update: Leave Requests updated', updatedRequests.length);
 
           // Map backend format to frontend format if necessary
           // Note: dataPreloadService typically returns raw backend data, so we might need mapping
@@ -4356,7 +4684,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
     this.subscriptions.add(
       this.dataPreloadService.getUpdateObservable('interns').subscribe(updatedInterns => {
         if (updatedInterns) {
-          console.log('🔄 Real-time update: Interns updated', updatedInterns.length);
+          console.log('Ã°Å¸â€â€ž Real-time update: Interns updated', updatedInterns.length);
           // We can either reload execution or just assume interns are updated in cache
           // Let's re-run the filtering logic for interns
 
@@ -4377,11 +4705,34 @@ export class AdminDashboard implements OnInit, OnDestroy {
       })
     );
 
+    // Subscribe to User profile updates
+    this.subscriptions.add(
+      this.webSocketService.userUpdates$.subscribe(update => {
+        if (update && (update.type === 'USER_PROFILE_UPDATED' || update.type === 'PROFILE_UPDATED')) {
+          console.log('🔄 Real-time update: User profile changed');
+          // Reload user-related data to ensure tables reflect the new names/details
+          this.loadInterns();
+          this.loadSupervisors();
+          this.loadUsers();
+          
+          // Also update the current admin's own details if it's their own profile
+          const currentUser = this.authService.getCurrentUserSync();
+          if (currentUser && update.data && update.data.email === currentUser.email && this.admin) {
+            this.admin.name = update.data.name || this.admin.name;
+            if (update.data.department) {
+               this.admin.Department = update.data.department;
+            }
+            this.cdr.detectChanges();
+          }
+        }
+      })
+    );
+
     // Subscribe to Department updates
     this.subscriptions.add(
       this.dataPreloadService.getUpdateObservable('departments').subscribe(updatedDepartments => {
         if (updatedDepartments) {
-          console.log('🔄 Real-time update: Departments updated', updatedDepartments.length);
+          console.log('Ã°Å¸â€â€ž Real-time update: Departments updated', updatedDepartments.length);
           this.departments = updatedDepartments;
           this.dataPreloadService.setCachedData('departments', updatedDepartments);
           this.cdr.detectChanges();
@@ -4393,7 +4744,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
     this.subscriptions.add(
       this.dataPreloadService.getUpdateObservable('attendance').subscribe(updatedAttendance => {
         if (updatedAttendance) {
-          console.log('🔄 Real-time update: Attendance updated');
+          console.log('Ã°Å¸â€â€ž Real-time update: Attendance updated');
           this.loadAttendance();
           // Reload interns to update status (e.g. 'Present', 'Absent')
           this.loadInterns();
@@ -4406,7 +4757,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
       this.dataPreloadService.getUpdateObservable('users').subscribe(updatedUsers => {
         if (updatedUsers && Array.isArray(updatedUsers)) {
           this.cdr.detectChanges();
-          console.log('🔄 Real-time update: Users updated');
+          console.log('Ã°Å¸â€â€ž Real-time update: Users updated');
         }
       })
     );
@@ -4414,7 +4765,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
     // Direct WebSocket subscriptions for immediate real-time updates
     this.subscriptions.add(
       this.webSocketService.leaveRequestUpdates$.subscribe(message => {
-        console.log('📨 WebSocket leave request update:', message.type);
+        console.log('Ã°Å¸â€œÂ¨ WebSocket leave request update:', message.type);
         this.loadLeaveRequests();
         this.checkForNewLeaveRequests();
       })
@@ -4422,28 +4773,28 @@ export class AdminDashboard implements OnInit, OnDestroy {
 
     this.subscriptions.add(
       this.webSocketService.internUpdates$.subscribe(message => {
-        console.log('📨 WebSocket intern update:', message.type);
+        console.log('Ã°Å¸â€œÂ¨ WebSocket intern update:', message.type);
         this.loadInterns();
       })
     );
 
     this.subscriptions.add(
       this.webSocketService.supervisorUpdates$.subscribe(message => {
-        console.log('📨 WebSocket supervisor update:', message.type);
+        console.log('Ã°Å¸â€œÂ¨ WebSocket supervisor update:', message.type);
         this.loadSupervisors();
       })
     );
 
     this.subscriptions.add(
       this.webSocketService.departmentUpdates$.subscribe(message => {
-        console.log('📨 WebSocket department update:', message.type);
+        console.log('Ã°Å¸â€œÂ¨ WebSocket department update:', message.type);
         this.loadDepartments();
       })
     );
 
     this.subscriptions.add(
       this.webSocketService.attendanceUpdates$.subscribe(message => {
-        console.log('📨 WebSocket attendance update:', message.type);
+        console.log('Ã°Å¸â€œÂ¨ WebSocket attendance update:', message.type);
         this.loadAttendance();
         this.loadInterns();
       })
@@ -4491,69 +4842,69 @@ export class AdminDashboard implements OnInit, OnDestroy {
       })
     );
 
-    // ✅ Get current user from auth service (contains department selected by super admin)
+    // Ã¢Å“â€¦ Get current user from auth service (contains department selected by super admin)
     const currentUser = this.authService.getCurrentUserSync();
 
-    // ✅ Debug: Log full currentUser to see what backend is returning
-    console.log('🔍 DEBUG: Full currentUser from AuthService:', JSON.stringify(currentUser, null, 2));
+    // Ã¢Å“â€¦ Debug: Log full currentUser to see what backend is returning
+    console.log('Ã°Å¸â€Â DEBUG: Full currentUser from AuthService:', JSON.stringify(currentUser, null, 2));
 
     if (currentUser) {
-      // ✅ Store admin's department ID from backend (selected by super admin when creating admin)
+      // Ã¢Å“â€¦ Store admin's department ID from backend (selected by super admin when creating admin)
       // This department ID is used to filter data and connect fields to the correct department
       this.adminDepartmentId = currentUser.departmentId;
 
-      // ✅ Get department from backend database (fetched from Admin entity via login response)
+      // Ã¢Å“â€¦ Get department from backend database (fetched from Admin entity via login response)
       // This department was selected by super admin when creating this admin
       let adminDepartmentFromBackend = currentUser.department || null;
 
-      // ✅ FALLBACK: If department is missing, fetch from backend database
+      // Ã¢Å“â€¦ FALLBACK: If department is missing, fetch from backend database
       if (!this.adminDepartmentId && !adminDepartmentFromBackend) {
-        console.log('⚠️ Department missing from login response, fetching from backend database...');
+        console.log('Ã¢Å¡Â Ã¯Â¸Â Department missing from login response, fetching from backend database...');
         this.fetchAdminDepartmentFromDatabase();
       }
 
-      // ✅ FALLBACK: If department name is missing but departmentId exists, try to get it from departments list
+      // Ã¢Å“â€¦ FALLBACK: If department name is missing but departmentId exists, try to get it from departments list
       if (!adminDepartmentFromBackend && this.adminDepartmentId && this.departments.length > 0) {
         const foundDept = this.departments.find(dept => dept.id === this.adminDepartmentId);
         if (foundDept) {
           adminDepartmentFromBackend = foundDept.name;
-          console.log('✅ Found department name from departments list using departmentId:', {
+          console.log('Ã¢Å“â€¦ Found department name from departments list using departmentId:', {
             departmentId: this.adminDepartmentId,
             departmentName: adminDepartmentFromBackend
           });
         }
       }
 
-      // ✅ If still no department, check if departments haven't loaded yet (will retry after load)
+      // Ã¢Å“â€¦ If still no department, check if departments haven't loaded yet (will retry after load)
       if (!adminDepartmentFromBackend && this.adminDepartmentId) {
-        console.warn('⚠️ Department name not found. Will retry after departments load. departmentId:', this.adminDepartmentId);
+        console.warn('Ã¢Å¡Â Ã¯Â¸Â Department name not found. Will retry after departments load. departmentId:', this.adminDepartmentId);
       }
 
       this.admin = {
         name: this.authService.getUserName(),
         email: this.authService.getUserEmail(),
         role: 'Administrator',
-        Department: adminDepartmentFromBackend, // ✅ Fetched from backend database
-        departmentId: this.adminDepartmentId, // ✅ Department ID for backend operations
-        field: currentUser.field || null // ✅ Field from backend database
+        Department: adminDepartmentFromBackend, // Ã¢Å“â€¦ Fetched from backend database
+        departmentId: this.adminDepartmentId, // Ã¢Å“â€¦ Department ID for backend operations
+        field: currentUser.field || null // Ã¢Å“â€¦ Field from backend database
       };
 
       // Log department info for debugging
-      console.log('✅ Admin profile loaded from backend:', {
+      console.log('Ã¢Å“â€¦ Admin profile loaded from backend:', {
         name: this.admin.name,
         email: this.admin.email,
-        department: this.admin.Department, // ✅ From backend database
-        departmentId: this.adminDepartmentId, // ✅ From backend database
+        department: this.admin.Department, // Ã¢Å“â€¦ From backend database
+        departmentId: this.adminDepartmentId, // Ã¢Å“â€¦ From backend database
         currentUserDepartment: currentUser.department,
         currentUserDepartmentId: currentUser.departmentId
       });
 
-      // ✅ CRITICAL: Auto-select admin's department from backend (selected by super admin)
+      // Ã¢Å“â€¦ CRITICAL: Auto-select admin's department from backend (selected by super admin)
       // This ensures fields are always created in the admin's assigned department
       // The department comes from the super admin's selection when the admin was created
       if (this.admin && this.admin.Department) {
         this.selectedDepartmentForField = this.admin.Department;
-        console.log('✅ Admin department set for field management:', {
+        console.log('Ã¢Å“â€¦ Admin department set for field management:', {
           departmentName: this.admin.Department,
           departmentId: this.adminDepartmentId
         });
@@ -4562,7 +4913,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
           this.cdr.detectChanges();
         }, 0);
       } else {
-        console.warn('⚠️ Admin has no department assigned. Fields cannot be created. Super admin must assign a department.');
+        console.warn('Ã¢Å¡Â Ã¯Â¸Â Admin has no department assigned. Fields cannot be created. Super admin must assign a department.');
       }
     }
 
@@ -4672,22 +5023,22 @@ export class AdminDashboard implements OnInit, OnDestroy {
   }
 
   /**
-   * ✅ Fetch admin's department from backend database
+   * Ã¢Å“â€¦ Fetch admin's department from backend database
    * This is a fallback if department is not in login response
    */
   fetchAdminDepartmentFromDatabase(): void {
     const adminEmail = this.authService.getUserEmail();
     if (!adminEmail) {
-      console.error('❌ Cannot fetch department: Admin email not available');
+      console.error('Ã¢ÂÅ’ Cannot fetch department: Admin email not available');
       return;
     }
 
-    console.log('🔄 Fetching admin department from backend database for:', adminEmail);
+    console.log('Ã°Å¸â€â€ž Fetching admin department from backend database for:', adminEmail);
 
     // Option 1: Use auth/me endpoint to get current user with department
     this.authService.getCurrentUser().subscribe({
       next: (user) => {
-        console.log('✅ Fetched user from backend:', user);
+        console.log('Ã¢Å“â€¦ Fetched user from backend:', user);
         if (user.departmentId || user.department) {
           this.adminDepartmentId = user.departmentId || this.adminDepartmentId;
           const departmentName = user.department || null;
@@ -4695,18 +5046,18 @@ export class AdminDashboard implements OnInit, OnDestroy {
           if (departmentName && this.admin) {
             this.admin.Department = departmentName;
             this.admin.departmentId = this.adminDepartmentId;
-            console.log('✅ Department fetched from backend database:', {
+            console.log('Ã¢Å“â€¦ Department fetched from backend database:', {
               departmentId: this.adminDepartmentId,
               departmentName: departmentName
             });
             this.cdr.detectChanges();
           }
         } else {
-          console.warn('⚠️ Backend /auth/me endpoint also does not return department');
+          console.warn('Ã¢Å¡Â Ã¯Â¸Â Backend /auth/me endpoint also does not return department');
         }
       },
       error: (error) => {
-        console.error('❌ Error fetching user from backend:', error);
+        console.error('Ã¢ÂÅ’ Error fetching user from backend:', error);
         // Try alternative: fetch from admins list
         this.fetchDepartmentFromAdminsList(adminEmail);
       }
@@ -4714,33 +5065,33 @@ export class AdminDashboard implements OnInit, OnDestroy {
   }
 
   /**
-   * ✅ Alternative: Fetch department from admins list
+   * âœ… Alternative: Fetch department from admins list
    * If auth/me doesn't work, try getting from super-admin/admins endpoint
    */
   fetchDepartmentFromAdminsList(adminEmail: string): void {
-    console.log('🔄 Trying to fetch department from admins list...');
-    this.api.get<any[]>('super-admin/admins').subscribe({
-      next: (admins) => {
-        const admin = admins.find(a => a.email === adminEmail);
-        if (admin && (admin.departmentId || admin.departmentName)) {
-          this.adminDepartmentId = admin.departmentId || this.adminDepartmentId;
-          const departmentName = admin.departmentName || null;
+    console.log('ðŸ”„ Trying to fetch department from admins list...');
+    this.api.get<AdminUser[]>('super-admin/admins').subscribe({
+      next: (admins: AdminUser[]) => {
+        const admin = admins.find((a: AdminUser) => a.email === adminEmail);
+        if (admin && admin.department) {
+          this.adminDepartmentId = this.adminDepartmentId;
+          const departmentName = admin.department || null;
 
           if (departmentName && this.admin) {
             this.admin.Department = departmentName;
             this.admin.departmentId = this.adminDepartmentId;
-            console.log('✅ Department fetched from admins list:', {
+            console.log('âœ… Department fetched from admins list:', {
               departmentId: this.adminDepartmentId,
               departmentName: departmentName
             });
             this.cdr.detectChanges();
           }
         } else {
-          console.warn('⚠️ Admin not found in admins list or has no department');
+          console.warn('âš ï¸ Admin not found in admins list or has no department');
         }
       },
-      error: (error) => {
-        console.error('❌ Error fetching from admins list:', error);
+      error: (error: any) => {
+        console.error('âŒ Error fetching from admins list:', error);
       }
     });
   }
@@ -4753,13 +5104,13 @@ export class AdminDashboard implements OnInit, OnDestroy {
     const cachedUsers = this.dataPreloadService.getCachedData<any[]>('users');
     if (cachedUsers && cachedUsers.length > 0) {
       this.allUsers = cachedUsers;
-      console.log(`✅ Loaded ${cachedUsers.length} users from cache`);
+      console.log(`âœ… Loaded ${cachedUsers.length} users from cache`);
     }
 
     // Leave Requests
     const cachedLeaveRequests = this.dataPreloadService.getCachedData<any[]>('leaveRequests');
     if (cachedLeaveRequests && cachedLeaveRequests.length > 0) {
-      this.leaveRequests = cachedLeaveRequests.map(req => ({
+      this.leaveRequests = cachedLeaveRequests.map((req: any) => ({
         id: req.id,
         name: req.name,
         email: req.email,
@@ -4773,14 +5124,14 @@ export class AdminDashboard implements OnInit, OnDestroy {
         leaveType: req.leaveType,
         document: req.document
       }));
-      console.log(`✅ Loaded ${cachedLeaveRequests.length} leave requests from cache`);
+      console.log(`âœ… Loaded ${cachedLeaveRequests.length} leave requests from cache`);
       this.updateNewLeaveRequestsCount();
     }
 
     // Interns
     const cachedInterns = this.dataPreloadService.getCachedData<any[]>('interns');
     if (cachedInterns && cachedInterns.length > 0) {
-      this.interns = cachedInterns.map(intern => ({
+      this.interns = cachedInterns.map((intern: any) => ({
         id: intern.id,
         name: intern.name,
         email: intern.email,
@@ -4794,13 +5145,13 @@ export class AdminDashboard implements OnInit, OnDestroy {
         active: intern.active !== false,
         recordsByDay: {}
       }));
-      console.log(`✅ Loaded ${cachedInterns.length} interns from cache`);
+      console.log(`âœ… Loaded ${cachedInterns.length} interns from cache`);
     }
 
     // Supervisors
     const cachedSupervisors = this.dataPreloadService.getCachedData<any[]>('supervisors');
     if (cachedSupervisors && cachedSupervisors.length > 0) {
-      this.supervisors = cachedSupervisors.map(s => ({
+      this.supervisors = cachedSupervisors.map((s: any) => ({
         id: s.id,
         name: s.name,
         surname: s.surname,
@@ -4812,7 +5163,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
         status: s.status || 'Active',
         active: s.active !== false
       }));
-      console.log(`✅ Loaded ${cachedSupervisors.length} supervisors from cache`);
+      console.log(`âœ… Loaded ${cachedSupervisors.length} supervisors from cache`);
     }
 
     // Departments
@@ -4822,10 +5173,10 @@ export class AdminDashboard implements OnInit, OnDestroy {
       this.departments = cachedDepartments;
 
       this.departmentIdMap.clear();
-      cachedDepartments.forEach(dept => {
+      cachedDepartments.forEach((dept: any) => {
         this.departmentIdMap.set(dept.name, dept.id);
       });
-      console.log(`✅ Loaded ${cachedDepartments.length} departments from cache`);
+      console.log(`âœ… Loaded ${cachedDepartments.length} departments from cache`);
     }
   }
 
@@ -4918,6 +5269,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
           field: intern.field || '',
           status: this.mapStatus(intern.status),
           active: intern.active !== false,
+          hasLoggedIn: intern.hasLoggedIn === true,
           recordsByDay: {}
         }));
 
@@ -4978,7 +5330,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
 
     const signatureObservables = internsWithId.map(intern =>
       this.api.get<any>(`interns/${intern.id}/signature`).pipe(
-        map(response => ({ id: intern.id, signature: response.signature })),
+        map((response: any) => ({ id: intern.id, signature: response.signature })),
         catchError(() => of({ id: intern.id, signature: undefined }))
       )
     );
@@ -4995,7 +5347,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
             }
           }
         });
-        // ✅ Regenerate report to include signatures
+        // âœ… Regenerate report to include signatures
         this.generateReport();
         this.cdr.detectChanges();
       }
@@ -5093,6 +5445,51 @@ export class AdminDashboard implements OnInit, OnDestroy {
     this.lastSupervisorEmailValue = '';
   }
 
+  toggleCreateSupervisorPasswordVisibility(): void {
+    this.showCreateSupervisorPassword = !this.showCreateSupervisorPassword;
+  }
+
+  toggleCreateSupervisorConfirmPasswordVisibility(): void {
+    this.showCreateSupervisorConfirmPassword = !this.showCreateSupervisorConfirmPassword;
+  }
+
+  toggleEditSupervisorPasswordVisibility(): void {
+    this.showEditSupervisorPassword = !this.showEditSupervisorPassword;
+  }
+
+  toggleEditSupervisorConfirmPasswordVisibility(): void {
+    this.showEditSupervisorConfirmPassword = !this.showEditSupervisorConfirmPassword;
+  }
+
+  generateSupervisorPassword(isEdit: boolean = false): void {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+    let pass = '';
+    // Ensure all required character types are present
+    pass += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)];
+    pass += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)];
+    pass += '0123456789'[Math.floor(Math.random() * 10)];
+    pass += '!@#$%^&*'[Math.floor(Math.random() * 8)];
+
+    for (let i = 4; i < 12; i++) {
+      pass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    pass = pass.split('').sort(() => 0.5 - Math.random()).join('');
+
+    if (isEdit) {
+      if (!this.editSupervisorForm) this.editSupervisorForm = {} as any;
+      this.editSupervisorForm.password = pass;
+      this.editSupervisorForm.confirmPassword = pass;
+      this.showEditSupervisorPassword = true;
+      this.showEditSupervisorConfirmPassword = true;
+    } else {
+      this.supervisorForm.password = pass;
+      this.supervisorForm.confirmPassword = pass;
+      this.showCreateSupervisorPassword = true;
+      this.showCreateSupervisorConfirmPassword = true;
+    }
+  }
+
   private lastSupervisorEmailValue: string = '';
 
   onSupervisorEmailKeyDown(event: KeyboardEvent): void {
@@ -5183,9 +5580,11 @@ export class AdminDashboard implements OnInit, OnDestroy {
     }
 
     this.isCreatingSupervisor = true;
+    // âœ… Merge name and surname for backend (backend only has one 'name' column)
+    const fullName = (this.supervisorForm.name.trim() + ' ' + this.supervisorForm.surname.trim()).trim();
+
     const supervisorData: any = {
-      name: this.supervisorForm.name,
-      surname: this.supervisorForm.surname,
+      name: fullName,
       email: this.supervisorForm.email,
       password: this.supervisorForm.password,
       departmentId: this.supervisorForm.departmentId
@@ -5232,6 +5631,7 @@ export class AdminDashboard implements OnInit, OnDestroy {
 
         // Store password temporarily for the invite message
         this.supervisorPassword = this.supervisorForm.password;
+        this.lastInvitedSupervisorEmail = this.supervisorForm.email;
 
         // Generate invite link
         this.generateInviteLink();
@@ -5338,8 +5738,10 @@ Admin`;
       active: supervisor.active !== false
     };
 
-    // Clear password since we don't have it for existing supervisors
-    this.supervisorPassword = '';
+    // Restore password only if it belongs to this supervisor
+    if (this.lastInvitedSupervisorEmail !== supervisor.email) {
+      this.supervisorPassword = '';
+    }
 
     // Generate invite link
     this.generateInviteLink();
@@ -5465,7 +5867,7 @@ Admin`;
     this.newlyCreatedSupervisor = null;
     this.inviteLink = '';
     this.inviteMessage = '';
-    this.supervisorPassword = '';
+    // password is kept in supervisorPassword/lastInvitedSupervisorEmail for resend functionality
   }
 
   loadSupervisors(): void {
@@ -5614,20 +6016,20 @@ Admin`;
         this.cdr.detectChanges();
       },
       error: (error) => {
-        console.error('❌ Error loading leave requests:', error);
+        console.error('âŒ Error loading leave requests:', error);
         const errorMessage = error?.message || 'Failed to load leave requests';
         const statusCode = error?.status || error?.error?.status || 0;
 
-        // ✅ Handle different error types gracefully
+        // âœ… Handle different error types gracefully
         if (statusCode === 401 || errorMessage.includes('Unauthorized')) {
-          console.warn('⚠️ Authentication error - user may need to re-login');
+          console.warn('âš ï¸ Authentication error - user may need to re-login');
           this.leaveRequests = [];
         } else if (statusCode === 500 || errorMessage.includes('500') || errorMessage.includes('Server error')) {
-          console.warn('⚠️ Backend returned 500 error for leave requests endpoint');
-          console.warn('⚠️ This may indicate the backend endpoint has an issue or is not fully implemented');
-          console.warn('⚠️ Setting leave requests to empty array - admin can still use other features');
+          console.warn('âš ï¸ Backend returned 500 error for leave requests endpoint');
+          console.warn('âš ï¸ This may indicate the backend endpoint has an issue or is not fully implemented');
+          console.warn('âš ï¸ Setting leave requests to empty array - admin can still use other features');
 
-          // ✅ Set empty array instead of retrying (to avoid infinite loop)
+          // âœ… Set empty array instead of retrying (to avoid infinite loop)
           this.leaveRequests = [];
           this.dataPreloadService.setCachedData('leaveRequests', []);
           this.updateNewLeaveRequestsCount();
@@ -5681,10 +6083,10 @@ Admin`;
             this.departments = [adminDept];
             console.log('Admin department loaded:', adminDept.name, 'ID:', adminDept.id);
 
-            // ✅ FALLBACK: If admin.Department is missing, set it from the loaded department
+            // âœ… FALLBACK: If admin.Department is missing, set it from the loaded department
             if (this.admin && !this.admin.Department && adminDept.name) {
               this.admin.Department = adminDept.name;
-              console.log('✅ Set admin.Department from loaded department:', adminDept.name);
+              console.log('âœ… Set admin.Department from loaded department:', adminDept.name);
               this.cdr.detectChanges();
             }
           } else {
@@ -5693,10 +6095,10 @@ Admin`;
             this.departments = adminDeptByName ? [adminDeptByName] : [];
             console.warn('Admin department ID not found, using name match:', this.adminDepartment);
 
-            // ✅ FALLBACK: Try to set department name if we found it by name
+            // âœ… FALLBACK: Try to set department name if we found it by name
             if (adminDeptByName && this.admin && !this.admin.Department) {
               this.admin.Department = adminDeptByName.name;
-              console.log('✅ Set admin.Department from name match:', adminDeptByName.name);
+              console.log('âœ… Set admin.Department from name match:', adminDeptByName.name);
               this.cdr.detectChanges();
             }
           }
@@ -5707,21 +6109,21 @@ Admin`;
             this.departments = adminDept ? [adminDept] : [];
             console.log('Admin department loaded by name:', this.adminDepartment);
 
-            // ✅ FALLBACK: Set department name if found
+            // âœ… FALLBACK: Set department name if found
             if (adminDept && this.admin && !this.admin.Department) {
               this.admin.Department = adminDept.name;
-              console.log('✅ Set admin.Department from name match:', adminDept.name);
+              console.log('âœ… Set admin.Department from name match:', adminDept.name);
               this.cdr.detectChanges();
             }
           } else {
             // No department assigned - show empty
             this.departments = [];
-            console.warn('⚠️ Admin has no department assigned');
-            console.warn('⚠️ Admin department ID:', this.adminDepartmentId);
-            console.warn('⚠️ Admin department name:', this.adminDepartment);
-            console.warn('⚠️ This admin needs to be assigned a department by the super admin');
+            console.warn('âš ï¸ Admin has no department assigned');
+            console.warn('âš ï¸ Admin department ID:', this.adminDepartmentId);
+            console.warn('âš ï¸ Admin department name:', this.adminDepartment);
+            console.warn('âš ï¸ This admin needs to be assigned a department by the super admin');
 
-            // ✅ Show user-friendly warning
+            // âœ… Show user-friendly warning
             Swal.fire({
               icon: 'warning',
               title: 'No Department Assigned',
@@ -5742,7 +6144,7 @@ Admin`;
         }
 
         // Debug: Log departments and their fields
-        console.log('✅ Loaded departments for admin:', this.departments.length);
+        console.log('âœ… Loaded departments for admin:', this.departments.length);
         this.departments.forEach(dept => {
           const fieldCount = dept.fields ? dept.fields.length : 0;
           const fieldNames = dept.fields ? dept.fields.map((f: any) => typeof f === 'string' ? f : (f.name || '')).filter((n: string) => n) : [];
@@ -5826,9 +6228,9 @@ Admin`;
   loadLocations(): void {
     this.isLoadingLocations = true;
     this.locationService.getAllLocations().subscribe({
-      next: (locations: Location[]) => {
+      next: (locations: SystemLocation[]) => {
         // Map backend locationId to frontend id for compatibility
-        this.locations = locations.map(loc => ({
+        this.locations = locations.map((loc: SystemLocation) => ({
           id: loc.locationId || loc.id,
           locationId: loc.locationId || loc.id,
           name: loc.name,
@@ -5839,10 +6241,10 @@ Admin`;
           active: loc.active !== false
         }));
         this.isLoadingLocations = false;
-        console.log('✓ Loaded', this.locations.length, 'location(s) from database');
+        console.log('âœ… Loaded', this.locations.length, 'location(s) from database');
         this.cdr.detectChanges();
       },
-      error: (error) => {
+      error: (error: any) => {
         console.error('Error loading locations:', error);
         this.isLoadingLocations = false;
         // Fallback to empty array if backend fails
@@ -5850,5 +6252,358 @@ Admin`;
         this.cdr.detectChanges();
       }
     });
+  }
+
+  // ===================== BULK IMPORT CSV =====================
+  showBulkImportModal: boolean = false;
+  bulkImportPassword: string = 'Password123!';
+  selectedCsvFile: File | null = null;
+  bulkImportError: string | null = null;
+  bulkImportSuccess: string | null = null;
+  isImporting: boolean = false;
+  sendInvitesAfterImport: boolean = true;
+  forcePasswordResetAfterImport: boolean = true;
+  showBulkImportPassword: boolean = false;
+
+  openBulkImportModal() {
+    this.showBulkImportModal = true;
+    this.bulkImportError = null;
+    this.bulkImportSuccess = null;
+    this.selectedCsvFile = null;
+    this.bulkImportPassword = 'Password123!';
+    this.isImporting = false;
+    this.sendInvitesAfterImport = true; // Reset to true on open
+    this.showBulkInternInviteCard = false; // Close invite card if open
+    this.cdr.detectChanges();
+
+    // Reset file input
+    const fileInput = document.getElementById('csvFileInput') as HTMLInputElement;
+    if (fileInput) fileInput.value = '';
+  }
+
+  closeBulkImportModal() {
+    this.showBulkImportModal = false;
+    this.bulkImportError = null;
+    this.bulkImportSuccess = null;
+  }
+
+  onCsvFileChange(event: any) {
+    const target = event.target as HTMLInputElement;
+    const file = target.files ? target.files[0] : null;
+    if (file && (file.type === 'text/csv' || file.name.endsWith('.csv') || file.name.endsWith('.CSV'))) {
+      this.selectedCsvFile = file;
+      this.bulkImportError = null;
+    } else {
+      this.selectedCsvFile = null;
+      this.bulkImportError = 'Please specify a valid CSV file.';
+    }
+  }
+
+  processBulkImport() {
+    if (!this.selectedCsvFile) return;
+    this.isImporting = true;
+    this.bulkImportError = null;
+    this.bulkImportSuccess = null;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      this.parseAndUploadCsv(text);
+    };
+    reader.onerror = () => {
+      this.bulkImportError = 'Failed to read the file.';
+      this.isImporting = false;
+      this.cdr.detectChanges();
+    };
+    reader.readAsText(this.selectedCsvFile);
+  }
+
+  private parseAndUploadCsv(csvText: string) {
+    // Strip BOM if present
+    const cleanText = csvText.replace(/^\uFEFF/, '');
+    const lines = cleanText.split(/\r?\n/).filter((line: string) => line.trim() !== '');
+
+    // Standardize date to YYYY-MM-DD for backend
+    const normalizeDate = (dateStr: string): string | null => {
+      if (!dateStr || !dateStr.trim()) return null;
+      const clean = dateStr.trim();
+
+      // Try YYYY-MM-DD (ISO)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+
+      // Try DD/MM/YYYY
+      let match = clean.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+      if (match) {
+        const d = match[1].padStart(2, '0');
+        const m = match[2].padStart(2, '0');
+        const y = match[3];
+        return `${y}-${m}-${d}`;
+      }
+
+      // Try YYYY/MM/DD
+      match = clean.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+      if (match) {
+        const y = match[1];
+        const m = match[2].padStart(2, '0');
+        const d = match[3].padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+
+      return clean; // Fallback to raw value
+    };
+
+    if (lines.length < 2) {
+      this.bulkImportError = 'CSV file is empty or missing data rows.';
+      this.isImporting = false;
+      this.cdr.detectChanges();
+      return;
+    }
+
+    // Detect separator (comma or semicolon)
+    const firstLine = lines[0];
+    const commaCount = (firstLine.match(/,/g) || []).length;
+    const semicolonCount = (firstLine.match(/;/g) || []).length;
+    const separator = semicolonCount > commaCount ? ';' : ',';
+    console.log(`Ã°Å¸â€œÅ  CSV Detection: Using separator "${separator}" (Commas: ${commaCount}, Semicolons: ${semicolonCount})`);
+
+    let deptId = this.adminDepartmentId ||
+      this.departments.find((d: any) => d.name === this.adminDepartment)?.id;
+
+    if (!deptId && this.departments.length > 0) {
+      deptId = this.departments[0].id;
+    }
+
+    if (!deptId) {
+      this.bulkImportError = 'Could not determine your department ID. Cannot proceed with import.';
+      this.isImporting = false;
+      this.cdr.detectChanges();
+      return;
+    }
+
+    // Helper for robust CSV parsing that handles quotes and spaces correctly
+    const parseCSVLine = (line: string): string[] => {
+      const rowValues: string[] = [];
+      let currentValue = '';
+      let insideQuotes = false;
+
+      for (let char of line) {
+        if (char === '"') {
+          insideQuotes = !insideQuotes;
+        } else if (char === separator && !insideQuotes) {
+          rowValues.push(currentValue.trim());
+          currentValue = '';
+        } else {
+          currentValue += char;
+        }
+      }
+      rowValues.push(currentValue.trim());
+      return rowValues;
+    };
+
+    const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().replace(/['"]/g, ''));
+    console.log('Ã°Å¸â€œÅ  CSV Headers:', headers);
+
+    const internsPayload: any[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      let values: string[] = [];
+
+      values = parseCSVLine(line);
+
+      if (values.length < 2) continue;
+
+      const internParams: any = { departmentId: deptId };
+      let firstName = '';
+      let surname = '';
+
+      for (let j = 0; j < headers.length; j++) {
+        const header = headers[j];
+        const val = values[j] || '';
+        if (!val) continue;
+
+        const lowHeader = header.toLowerCase();
+
+        if (lowHeader === 'name' || lowHeader === 'first name' || lowHeader === 'firstname') {
+          firstName = val;
+        } else if (lowHeader.includes('surname') || lowHeader.includes('last name') || lowHeader === 'lastname') {
+          surname = val;
+        } else if (lowHeader.includes('email')) {
+          internParams.email = val.toLowerCase();
+        } else if (lowHeader.includes('id number') || lowHeader === 'id' || lowHeader === 'idnumber') {
+          internParams.idNumber = val;
+        } else if (lowHeader.includes('start')) {
+          internParams.startDate = normalizeDate(val);
+        } else if (lowHeader.includes('end')) {
+          internParams.endDate = normalizeDate(val);
+        } else if (lowHeader.includes('employer')) {
+          internParams.employer = val;
+        } else if (lowHeader.includes('field')) {
+          internParams.field = val;
+        } else if (lowHeader.includes('department')) {
+          // Attempt to find department ID by name
+          const foundDept = this.departments.find((d: any) =>
+            d.name?.toLowerCase() === val.toLowerCase() ||
+            (d as any).departmentName?.toLowerCase() === val.toLowerCase()
+          );
+          if (foundDept) {
+            internParams.departmentId = foundDept.id;
+          }
+        }
+      }
+
+      // Merge name and surname
+      if (firstName && surname) {
+        internParams.name = `${firstName} ${surname}`.trim();
+      } else if (firstName) {
+        internParams.name = firstName;
+      } else if (surname) {
+        internParams.name = surname;
+      }
+
+      if (internParams.name && internParams.email) {
+        internsPayload.push(internParams);
+      }
+    }
+
+    console.log(`Ã°Å¸â€œÅ  CSV Parsed: Found ${internsPayload.length} valid interns.`, internsPayload.slice(0, 2));
+
+    if (internsPayload.length === 0) {
+      this.bulkImportError = 'No valid intern data found in CSV. Make sure you have "name" (or "first name" + "surname") and "email" headers.';
+      this.isImporting = false;
+      this.cdr.detectChanges();
+      return;
+    }
+
+    this.internService.bulkCreateInterns(internsPayload, this.bulkImportPassword, this.sendInvitesAfterImport, this.forcePasswordResetAfterImport).subscribe({
+      next: (res: any) => {
+        this.bulkImportSuccess = `Successfully imported ${res.successCount} interns.`;
+        this.lastBulkImportPassword = this.bulkImportPassword;
+
+        if (res.interns && res.interns.length > 0) {
+          this.newlyImportedInterns = res.interns;
+          this.generateBulkInternInviteLink();
+          this.generateBulkInternDefaultMessage();
+
+          // Show the card after a short delay if invites were requested
+          if (this.sendInvitesAfterImport) {
+            setTimeout(() => {
+              this.showBulkInternInviteCard = true;
+              this.closeBulkImportModal();
+              this.cdr.detectChanges();
+            }, 1500);
+          }
+        }
+        if (res.errors && res.errors.length > 0) {
+          this.bulkImportError = `Some errors occurred:\n${res.errors.join('\n')}`;
+        }
+        this.isImporting = false;
+        this.cdr.detectChanges();
+
+        if (!res.errors || res.errors.length === 0) {
+          // If we're going to show the invite card, don't auto-close with the 3s timeout
+          if (!this.sendInvitesAfterImport) {
+            setTimeout(() => {
+              this.closeBulkImportModal();
+              this.loadInterns();
+              this.cdr.detectChanges();
+            }, 3000);
+          } else {
+            // Just refresh list, modal will be closed by the invite card trigger
+            this.loadInterns();
+          }
+        } else {
+          // If there are errors, we need to refresh the list to show partial successes,
+          // but we keep the modal open so the user can see the error list.
+          this.loadInterns();
+          this.cdr.detectChanges();
+        }
+      },
+      error: (err: any) => {
+        console.error('Ã¢ÂÅ’ Bulk import error:', err);
+        this.bulkImportError = err.message || err.error?.error || err.error?.message || 'Failed to import interns. Verify your data and try again.';
+        this.isImporting = false;
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  // Generate bulk intern invite link
+  generateBulkInternInviteLink(): void {
+    this.bulkInternInviteLink = window.location.origin + '/login';
+  }
+
+  // Generate default message for bulk interns
+  generateBulkInternDefaultMessage(): void {
+    this.bulkInternInviteMessage = `Hello,
+
+Welcome to the Intern Register System! You have been registered successfully.
+
+You can log in using your university email and the default password assigned during import: ${this.lastBulkImportPassword}
+
+Please use the link below to access the system:
+${this.bulkInternInviteLink}
+
+Ã¢Å¡Â Ã¯Â¸Â IMPORTANT: For security reasons, please log in and change your password immediately.
+
+Best regards,
+Admin`;
+  }
+
+  // Send bulk intern invites
+  sendBulkInternInvites(): void {
+    if (this.newlyImportedInterns.length === 0) return;
+
+    this.isImporting = true;
+    const invites = this.newlyImportedInterns.map(intern => ({
+      email: intern.email,
+      name: intern.name,
+      password: this.lastBulkImportPassword
+    }));
+
+    this.internService.bulkSendInvites(invites, this.bulkInternInviteMessage).subscribe({
+      next: (res) => {
+        Swal.fire({
+          icon: 'success',
+          title: 'Invitations Sent!',
+          text: `Successfully sent ${res.successCount} invitations.`,
+          timer: 3000,
+          showConfirmButton: false
+        });
+        this.isImporting = false;
+        this.showBulkInternInviteCard = false;
+      },
+      error: (err) => {
+        console.error('Error sending bulk invites:', err);
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: 'Failed to send invitations. Please try again.',
+          timer: 3000,
+          showConfirmButton: false
+        });
+        this.isImporting = false;
+      }
+    });
+  }
+
+  // Copy bulk intern invite link
+  copyBulkInternInviteLink(): void {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(this.bulkInternInviteLink).then(() => {
+        Swal.fire({
+          icon: 'success',
+          title: 'Copied!',
+          text: 'Link has been copied to clipboard.',
+          timer: 2000,
+          showConfirmButton: false
+        });
+      });
+    }
+  }
+
+  // Close bulk intern invite card
+  closeBulkInternInviteCard(): void {
+    this.showBulkInternInviteCard = false;
   }
 }

@@ -48,10 +48,7 @@
       <!-- Profile Section -->
       <app-profile *ngIf="activeSection === 'profile'" [isEmbedded]="true"></app-profile>
 
-      <!-- LOG HISTORY SECTION -->
-      <div *ngIf="activeSection === 'logs'" class="section-animate">
-        <app-log-history userRole="INTERN"></app-log-history>
-      </div>
+
 
       <!-- 🔔 ALERT MESSAGE -->
       <div id="alertBox" class="alert fade text-center " role="alert">
@@ -60,7 +57,7 @@
 
       <!-- User Card - Visible on Mobile Only (Sidebar is hidden on mobile) -->
       <!-- <div class="user-card-container mb-4 d-md-none">
-        <div class="card user-card shadow-sm  rounded-4">
+        <div class="card user-card shadow-sm  rounded-0">
           <div class="card-body p-3 p-md-4">
             <div class="row align-items-center g-3">
               <div class="col-auto">
@@ -94,46 +91,21 @@
         </div>
       </div> -->
 
-      <!-- Section Navigation Card (Mobile Only) -->
-      <div class="mobile-section-bar d-md-none">
-        <div class="card shadow-sm border-0 rounded-4 mb-4">
-          <div class="card-header bg-white border-0 py-3 px-4">
-            <div class="mobile-section-scroll" role="group" aria-label="Mobile section navigation">
-              <button type="button" class="btn btn-sm btn-outline-navy mobile-section-btn rounded-end-0"
-                [class.active]="isSectionActive('overview')" (click)="showSection('overview')" title="Go to Overview">
-                <i class="bi bi-speedometer2 me-1"></i><span>Overview</span>
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-navy mobile-section-btn rounded-0"
-                [class.active]="isSectionActive('signature')" (click)="showSection('signature')"
-                title="Go to Signature">
-                <i class="bi bi-pencil-square me-1"></i><span>Signature</span>
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-navy mobile-section-btn rounded-0"
-                [class.active]="isSectionActive('leave')" (click)="showSection('leave')" title="Go to Leave Requests">
-                <i class="bi bi-calendar2-check me-1"></i><span>Leave</span>
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-navy mobile-section-btn rounded-start-0"
-                [class.active]="isSectionActive('history')" (click)="showSection('history')" title="Go to History">
-                <i class="bi bi-clock-history me-1"></i><span>History</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+
 
       <!-- ===================== OVERVIEW SECTION ===================== -->
       <div *ngIf="activeSection === 'overview'" class="section-animate">
 
         <!-- Welcome Header -->
-        <div class="card shadow-sm border-0 rounded-4 mb-4 overview-header-card">
+        <div class="card shadow-sm border-0 rounded-0 mb-4 overview-header-card">
           <div class="card-body p-4">
             <div class="row align-items-center">
               <div class="col-12 col-md-8">
                 <h3 class="fw-bold text-navy mb-2">
                   <i class="bi bi-speedometer2 me-2"></i>Dashboard Overview
                 </h3>
-                <p class="text-muted mb-0">Welcome back, <span class="user-fullname"
-                    [class.settings-active]="isProfileActive">{{ intern.name }}</span>! Here's a summary of your
+                <p class="text-muted mb-0">Welcome back, <strong class="text-navy">{{ intern.name }}</strong>! Here's a
+                  summary of your
                   attendance and
                   leave requests.</p>
               </div>
@@ -150,7 +122,7 @@
         <div class="row g-3 mb-4 py-3 overview-cards-horizontal bg-white rounded">
           <div class="col overview-card-col" *ngFor="let stat of overviewStats; let i = index">
             <div
-              class="card overview-stat-card improved-stat-card shadow-lg border-0 rounded-4 h-100 position-relative overflow-hidden cursor-pointer"
+              class="card overview-stat-card improved-stat-card shadow-lg border-0 rounded-0 h-100 position-relative overflow-hidden cursor-pointer"
               [class]="'stat-card-' + stat.color + ' stat-card-' + (i + 1)" (click)="handleStatCardClick(stat)"
               [title]="stat.description" [attr.data-bs-toggle]="stat.description ? 'tooltip' : null"
               [attr.data-bs-placement]="'top'">
@@ -218,7 +190,7 @@
         </div>
 
         <!-- ===== RECENT ATTENDANCE TABLE ===== -->
-        <div class="card shadow-sm border-0 mb-4 rounded-4">
+        <div class="card shadow-sm border-0 mb-4 rounded-0">
           <div class="card-header bg-navy text-white border-0 py-3 px-4">
             <div class="d-flex justify-content-between align-items-center">
               <div>
@@ -313,7 +285,7 @@
         </div>
 
         <!-- ===== RECENT LEAVE REQUESTS TABLE ===== -->
-        <div class="card shadow-sm border-0 mb-4 rounded-4 overview-table-card">
+        <div class="card shadow-sm border-0 mb-4 rounded-0 overview-table-card">
           <div class="card-header bg-white border-0 pb-0 pt-4 px-4">
             <div
               class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-3">
@@ -358,7 +330,7 @@
                       <small class="text-muted">{{ leave.attachment || '-' }}</small>
                     </td>
                     <td class="text-center pe-4">
-                      <span class="badge rounded-pill px-3 py-1" [ngClass]="{
+                      <span class="badge rounded-0 px-3 py-1" [ngClass]="{
                       'bg-navy': leave.status === 'Approved',
                       'bg-gold': leave.status === 'Pending',
                       'bg-secondary': leave.status === 'Declined'
@@ -383,7 +355,7 @@
       <!-- ===== SIGNATURE SECTION ===== -->
       <div *ngIf="activeSection === 'signature'" class="section-animate">
         <!-- Section Header with Navigation - Mobile Only -->
-        <div class="card shadow-sm border-0 rounded-4 mb-4 d-md-none">
+        <div class="card shadow-sm border-0 rounded-0 mb-4 d-md-none">
           <div class="card-header bg-white border-0 py-3 px-4">
             <div class="d-flex justify-content-center align-items-center">
               <div class="btn-group" role="group">
@@ -410,13 +382,13 @@
         </div>
 
         <!-- Location Map Card -->
-        <div class="card shadow-sm border-0 rounded-4 mb-4">
-          <div class="card-header bg-white border-0 pb-0 pt-4 px-4">
+        <div class="card shadow-lg border-0 rounded-4 mb-4 premium-card overflow-hidden">
+          <div class="card-header bg-white border-0 pb-0 pt-4 px-4 position-relative z-1">
             <div class="d-flex justify-content-between align-items-center mb-3">
               <h5 class="fw-bold text-navy mb-0">
-                <i class="bi bi-geo-alt-fill me-2"></i>Location Map
+                <i class="bi bi-geo-alt-fill me-2 map-icon-pulse"></i>Location Map
               </h5>
-              <button type="button" class="btn btn-outline-navy btn-sm" (click)="refreshLocationMap()"
+              <button type="button" class="btn btn-outline-navy btn-sm rounded-pill px-3 shadow-sm" (click)="refreshLocationMap()"
                 title="Refresh Map" [disabled]="!isLocationMapReady">
                 <i class="bi bi-arrow-clockwise me-1"></i>Refresh
               </button>
@@ -424,33 +396,42 @@
           </div>
           <div class="card-body p-0">
             <!-- Empty State -->
-            <div *ngIf="locations.length === 0" class="text-center py-5 px-4">
-              <i class="bi bi-geo-alt locations-empty-icon"></i>
-              <p class="text-muted mt-3 mb-0">No locations configured yet</p>
-              <p class="text-muted small">Please contact your administrator to set up allowed sign-in locations</p>
+            <div *ngIf="locations.length === 0" class="text-center py-5 px-4 bg-light">
+              <i class="bi bi-geo-alt locations-empty-icon text-muted" style="font-size: 3rem;"></i>
+              <p class="text-navy fw-semibold mt-3 mb-1">No locations configured yet</p>
+              <p class="text-muted small">Please contact your administrator to set up allowed sign-in locations.</p>
             </div>
 
             <!-- Map Container -->
-            <div *ngIf="locations.length > 0">
-              <div id="intern-location-map" class="small-location-map"></div>
-              <div class="p-3 bg-light border-top">
-                <div class="row g-2 text-center">
-                  <div class="col-6 col-md-4" *ngFor="let location of locations">
-                    <small class="text-muted d-block mb-1">{{ location.name }}</small>
-                    <strong class="text-navy d-block mb-1" *ngIf="currentLocation">
-                      {{ getDistanceToLocation(location) | number:'1.0-0' }}m
-                    </strong>
-                    <span class="badge bg-navy-subtle text-navy small"
-                      *ngIf="currentLocation && isWithinLocation(location)">
-                      <i class="bi bi-check-circle me-1"></i>Within range
-                    </span>
-                    <span class="badge bg-light text-muted small"
-                      *ngIf="currentLocation && !isWithinLocation(location)">
-                      <i class="bi bi-x-circle me-1"></i>Out of range
-                    </span>
-                    <span class="badge bg-secondary-subtle text-secondary small" *ngIf="!currentLocation">
-                      <i class="bi bi-hourglass-split me-1"></i>Detecting...
-                    </span>
+            <div *ngIf="locations.length > 0" class="position-relative premium-map-container">
+              <div id="intern-location-map" class="small-location-map shadow-sm"></div>
+              
+              <!-- Floating Glass Panel -->
+              <div class="glass-overlay-panel">
+                <div class="row g-2 text-center justify-content-center align-items-center">
+                  <div class="col-12 col-md-auto mx-md-3" *ngFor="let location of locations">
+                    <div class="glass-badge-item">
+                      <small class="d-block mb-1 glass-location-name">
+                        <i class="bi bi-building me-1"></i>{{ location.name }}
+                      </small>
+                      <strong class="d-block mb-1 glass-distance" *ngIf="currentLocation">
+                        {{ getDistanceToLocation(location) | number:'1.0-0' }}m away
+                      </strong>
+                      
+                      <!-- Status Badges -->
+                      <span class="badge status-badge-glass text-success pulse-green"
+                        *ngIf="currentLocation && isWithinLocation(location)">
+                        <i class="bi bi-geo-alt-fill me-1"></i>Within Range
+                      </span>
+                      <span class="badge status-badge-glass text-warning pulse-orange"
+                        *ngIf="currentLocation && !isWithinLocation(location)">
+                        <i class="bi bi-skip-end-circle me-1"></i>Out of Range
+                      </span>
+                      <span class="badge status-badge-glass text-light" *ngIf="!currentLocation">
+                        <span class="spinner-grow spinner-grow-sm me-1 text-light" role="status" aria-hidden="true"></span>
+                        Detecting...
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -513,9 +494,9 @@
 
           <!-- Sign In/Out Buttons -->
           <div class="d-flex justify-content-center gap-2 flex-wrap mt-3">
-            <button *ngIf="!signedInToday" class="btn btn-navy btn-sm rounded-5" (click)="signIn()"
+            <button *ngIf="!signedInToday && !signedOutToday" class="btn btn-navy btn-sm rounded-5" (click)="signIn()"
               [disabled]="signedInToday || !isWithinAllowedLocation()"
-              [title]="signedInToday ? 'Already signed in today' : !isWithinAllowedLocation() ? 'You must be within an allowed location to sign in' : (!canSignInNow() ? 'Sign in allowed between 08:00 and 13:00, but you can still try' : 'Click to sign in')">
+              [title]="!isWithinAllowedLocation() ? 'You must be within an allowed location to sign in' : (!canSignInNow() ? 'Sign in allowed from ' + getNearestLocationStartTime() + ' until 17:00' : 'Click to sign in')">
               <i class="bi bi-box-arrow-in-right me-1"></i> Sign In
             </button>
 
@@ -532,10 +513,9 @@
 
           <!-- Time Alert for Sign In -->
           <div class="mt-2" *ngIf="!signedInToday && isBeforeSignInTime()">
-            <div class="alert bg-gold-subtle text-gold mb-0">
+            <div class="alert bg-gold-subtle text-gold mb-0 rounded-4 border-gold">
               <i class="bi bi-clock me-2"></i>
-              <strong>Sign-in Time:</strong> Sign-in is only available from 08:00 AM onwards. Please wait until 8:00 AM
-              to sign in.
+              <strong>Sign-in Time:</strong> Sign-in for <strong>{{ nearestLocationName || 'this location' }}</strong> is only available from <strong>{{ getNearestLocationStartTime() }}</strong> onwards.
             </div>
           </div>
 
@@ -594,14 +574,14 @@
         </div>
 
         <!-- Attendance Register Table -->
-        <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card shadow-sm border-0 rounded-0 mb-4">
           <div class="card-header bg-navy text-white border-0 py-3 px-4">
             <div class="d-flex justify-content-between align-items-center">
               <h5 class="mb-0 fw-bold">
                 <i class="bi bi-clock-history me-2"></i>Weekly Register
               </h5>
-              <span class="badge bg-gold text-dark px-3 py-2" *ngIf="weekFilteredLogs.length > 0">
-                {{ weekFilteredLogs.length }} Days
+              <span class="badge bg-gold text-dark px-3 py-2" *ngIf="getFullWeekLogs().length > 0">
+                {{ getFullWeekLogs().length }} Days
               </span>
             </div>
             <p class="mb-0 mt-2 small opacity-75">Your attendance records for this week (Monday - Friday)</p>
@@ -622,7 +602,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr *ngFor="let log of weekFilteredLogs" [class.table-primary]="isToday(log.date)"
+                  <tr *ngFor="let log of getFullWeekLogs()" [class.table-primary]="isToday(log.date)"
                     [class.table-secondary]="!log.timeIn && !isToday(log.date)">
                     <!-- Signature -->
                     <td class="ps-4">
@@ -686,7 +666,7 @@
                       </span>
                     </td>
                   </tr>
-                  <tr *ngIf="weekFilteredLogs.length === 0">
+                  <tr *ngIf="getFullWeekLogs().length === 0">
                     <td colspan="7" class="text-center text-muted py-5">
                       <i class="bi bi-inbox fs-1 d-block mb-3 opacity-25"></i>
                       <p class="mb-0">No attendance records for this week</p>
@@ -699,7 +679,7 @@
 
             <!-- Mobile Card View -->
             <div class="d-block d-lg-none p-3">
-              <div *ngFor="let log of weekFilteredLogs" class="card mb-3 border"
+              <div *ngFor="let log of getFullWeekLogs()" class="card mb-3 border"
                 [class.border-primary]="isToday(log.date)">
                 <div class="card-body p-3">
                   <!-- Header -->
@@ -755,7 +735,7 @@
               </div>
 
               <!-- Empty State for Mobile -->
-              <div *ngIf="weekFilteredLogs.length === 0" class="text-center py-5">
+              <div *ngIf="getFullWeekLogs().length === 0" class="text-center py-5">
                 <i class="bi bi-inbox fs-1 text-muted d-block mb-3"></i>
                 <p class="text-muted mb-0">No attendance records for this week</p>
                 <small class="text-muted">Sign in to start tracking your attendance</small>
@@ -770,7 +750,7 @@
       <!-- ===== LEAVE REQUEST SECTION ===== -->
       <div *ngIf="activeSection === 'leave'" class="section-animate">
         <!-- Section Header with Navigation - Mobile Only -->
-        <div class="card shadow-sm border-0 rounded-4 mb-4 d-md-none">
+        <div class="card shadow-sm border-0 rounded-0 mb-4 d-md-none">
           <div class="card-header bg-white border-0 py-3 px-4">
             <div class="d-flex justify-content-center align-items-center">
               <div class="btn-group" role="group">
@@ -797,7 +777,7 @@
         </div>
 
         <!-- Leave Request Form Card -->
-        <div class="card shadow-sm border-0 rounded-4 mb-4 leave-request-card">
+        <div class="card shadow-sm border-0 rounded-0 mb-4 leave-request-card">
           <div class="card-header bg-white border-0 pb-0 pt-4 px-4">
             <h4 class="fw-bold text-navy mb-0">
               <i class="bi bi-calendar-plus me-2"></i>Request Leave
@@ -847,7 +827,7 @@
         </div>
 
         <!-- Leave History Table -->
-        <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card shadow-sm border-0 rounded-0 mb-4">
           <div class="card-header bg-white border-0 pb-0 pt-4 px-4">
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
               <div>
@@ -873,7 +853,7 @@
           </div>
           <div class="card-body p-4">
             <!-- Empty State -->
-            <div *ngIf="filteredLeaveRequests.length === 0" class="text-center py-5">
+            <div *ngIf="nonDeclinedFilteredLeaveRequests.length === 0" class="text-center py-5">
               <i class="bi bi-inbox display-1 text-muted mb-3"></i>
               <h5 class="text-muted mb-2">No Leave Requests</h5>
               <p class="text-muted small mb-0">
@@ -881,30 +861,23 @@
                 your filters.' }}
               </p>
             </div>
-            <div class="table-responsive" *ngIf="filteredLeaveRequests.length > 0">
-              <table class="table table-bordered table-hover align-middle mb-0">
-                <thead class="table-light">
+            <div class="table-responsive" *ngIf="nonDeclinedFilteredLeaveRequests.length > 0">
+              <table class="table align-middle mb-0 leave-history-table">
+                <thead>
                   <tr>
-                    <th>ID</th>
                     <th>Type</th>
-                    <th>Start</th>
-                    <th>End</th>
-                    <th>Attachment</th>
-                    <th>Status</th>
-                    <th>Reason</th>
-                    <th>Actions</th> <!-- NEW COLUMN -->
+                    <th>Duration</th>
+                    <th class="text-center">Status</th>
+                    <th class="text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr *ngFor="let leave of filteredLeaveRequests">
-                    <!-- ID Column -->
-                    <td>{{ leave.id }}</td>
-
-                    <!-- Type Column - Editable -->
-                    <td>
+                  <tr *ngFor="let leave of nonDeclinedFilteredLeaveRequests" class="leave-history-row">
+                    <!-- Type Column -->
+                    <td class="fw-bold text-navy">
                       <span *ngIf="editingLeaveId !== leave.id">{{ leave.type }}</span>
                       <select *ngIf="editingLeaveId === leave.id" [(ngModel)]="editLeaveData.leaveType"
-                        class="form-select form-select-sm">
+                        class="form-select form-select-sm rounded-3">
                         <option value="ANNUAL">Annual Leave</option>
                         <option value="SICK">Sick Leave</option>
                         <option value="PERSONAL">Personal Leave</option>
@@ -913,78 +886,64 @@
                       </select>
                     </td>
 
-                    <!-- Start Date Column - Editable -->
+                    <!-- Duration Column -->
                     <td>
-                      <span *ngIf="editingLeaveId !== leave.id">{{ leave.startDate | date }}</span>
-                      <input *ngIf="editingLeaveId === leave.id" type="date" [(ngModel)]="editLeaveData.fromDate"
-                        class="form-control form-control-sm">
+                      <div *ngIf="editingLeaveId !== leave.id" class="d-flex flex-column">
+                        <span class="fw-semibold small text-dark">{{ leave.startDate | date:'dd MMM yyyy' }}</span>
+                        <span class="text-muted smaller">to {{ leave.endDate | date:'dd MMM yyyy' }}</span>
+                      </div>
+                      <div *ngIf="editingLeaveId === leave.id" class="d-flex flex-column gap-1">
+                        <input type="date" [(ngModel)]="editLeaveData.fromDate" class="form-control form-control-sm rounded-3">
+                        <input type="date" [(ngModel)]="editLeaveData.toDate" class="form-control form-control-sm rounded-3">
+                      </div>
                     </td>
-
-                    <!-- End Date Column - Editable -->
-                    <td>
-                      <span *ngIf="editingLeaveId !== leave.id">{{ leave.endDate | date }}</span>
-                      <input *ngIf="editingLeaveId === leave.id" type="date" [(ngModel)]="editLeaveData.toDate"
-                        class="form-control form-control-sm">
-                    </td>
-
-                    <!-- Attachment Column -->
-                    <td>{{ leave.attachment }}</td>
 
                     <!-- Status Column -->
-                    <td>
-                      <span class="badge" [ngClass]="{
-                    'bg-navy': leave.status === 'Approved',
-                    'bg-gold': leave.status === 'Pending',
-                    'bg-secondary': leave.status === 'Declined'
-                  }">
+                    <td class="text-center">
+                      <span class="status-badge-pill" [ngClass]="{
+                        'badge-approved': leave.status === 'Approved',
+                        'badge-pending': leave.status === 'Pending',
+                        'badge-declined': leave.status === 'Declined'
+                      }">
+                        <i class="bi" [ngClass]="{
+                          'bi-check-circle-fill': leave.status === 'Approved',
+                          'bi-clock-fill': leave.status === 'Pending',
+                          'bi-x-circle-fill': leave.status === 'Declined'
+                        }"></i>
                         {{ leave.status }}
                       </span>
                     </td>
 
-                    <!-- Reason Column - Editable -->
-                    <!-- Reason Column - Display Only (Not Editable) -->
-                    <td>
-                      <div>
-                        <div *ngIf="leave.status === 'Declined' && leave.reason">
-                          <span class="text-danger fw-bold"><i
-                              class="bi bi-exclamation-circle me-1"></i>Declined:</span>
-                          <span class="d-block small">{{ leave.reason }}</span>
-                        </div>
-                        <div *ngIf="leave.status !== 'Declined'">
-                          <span *ngIf="leave.reason">{{ leave.reason }}</span>
-                          <span *ngIf="!leave.reason" class="text-muted">-</span>
-                        </div>
-                        <div *ngIf="leave.status === 'Declined' && !leave.reason" class="text-muted">-</div>
-                      </div>
-                    </td>
-
                     <!-- Actions Column -->
-                    <td>
-                      <!-- Edit Mode Buttons -->
-                      <div *ngIf="editingLeaveId === leave.id" class="btn-group btn-group-sm">
-                        <button (click)="saveLeaveEdit()" class="btn btn-success btn-sm" title="Save changes">
-                          <i class="bi bi-check-lg"></i> Save
+                    <td class="text-center">
+                      <div class="action-btn-group justify-content-center">
+                        <!-- Edit Mode Buttons -->
+                        <ng-container *ngIf="editingLeaveId === leave.id">
+                          <button (click)="saveLeaveEdit()" class="btn btn-circle-action btn-success-subtle" title="Save changes">
+                            <i class="bi bi-check-lg"></i>
+                          </button>
+                          <button (click)="cancelLeaveEdit()" class="btn btn-circle-action btn-danger-subtle" title="Cancel editing">
+                            <i class="bi bi-x-lg"></i>
+                          </button>
+                        </ng-container>
+
+                        <!-- View Mode Button -->
+                        <button *ngIf="editingLeaveId !== leave.id && leave.status === 'Pending'"
+                          (click)="editLeaveRequest(leave)" class="btn btn-circle-action btn-primary-subtle"
+                          title="Edit this request">
+                          <i class="bi bi-pencil-square"></i>
                         </button>
-                        <button (click)="cancelLeaveEdit()" class="btn btn-secondary btn-sm" title="Cancel editing">
-                          <i class="bi bi-x-lg"></i> Cancel
+
+                        <!-- Download Attachment if exists -->
+                        <button *ngIf="leave.attachment" (click)="downloadAttachment(leave.attachment)"
+                          class="btn btn-circle-action btn-primary-subtle" title="Download attachment">
+                          <i class="bi bi-file-earmark-pdf"></i>
                         </button>
+
+                        <span *ngIf="editingLeaveId !== leave.id && leave.status !== 'Pending' && !leave.attachment"
+                          class="text-muted smaller">No Actions</span>
                       </div>
-
-                      <!-- View Mode Button -->
-                      <button *ngIf="editingLeaveId !== leave.id && leave.status === 'Pending'"
-                        (click)="editLeaveRequest(leave)" class="btn btn-outline-primary btn-sm"
-                        title="Edit this request">
-                        <i class="bi bi-pencil-square"></i> Edit
-                      </button>
-
-                      <!-- No actions for non-pending requests -->
-                      <span *ngIf="editingLeaveId !== leave.id && leave.status !== 'Pending'"
-                        class="text-muted small">-</span>
                     </td>
-                  </tr>
-
-                  <tr *ngIf="filteredLeaveRequests.length === 0">
-                    <td colspan="8" class="text-center text-muted">No leave requests found.</td>
                   </tr>
                 </tbody>
               </table>
@@ -993,10 +952,78 @@
         </div>
       </div>
 
-      <!-- ===== ATTENDANCE HISTORY & REPORTS ===== -->
+      <!-- ===== DECLINED LEAVE REQUESTS TABLE ===== -->
+      <div *ngIf="activeSection === 'leave' && declinedLeaveRequests.length > 0" class="section-animate mt-4">
+        <div class="card shadow-sm border-0 rounded-4 overflow-hidden">
+          <div class="card-header border-0 py-3 px-4 d-flex align-items-center gap-2"
+            style="background: linear-gradient(135deg, #dc3545 0%, #b02a37 100%);">
+            <i class="bi bi-x-octagon-fill text-white fs-5"></i>
+            <h6 class="mb-0 fw-bold text-white">Declined Leave Requests</h6>
+            <span class="badge bg-white text-danger ms-auto fw-bold">
+              {{ declinedLeaveRequests.length }}
+              {{ declinedLeaveRequests.length === 1 ? 'Request' : 'Requests' }}
+            </span>
+          </div>
+
+          <div class="card-body p-4">
+            <!-- Empty State -->
+            <div *ngIf="declinedLeaveRequests.length === 0" class="text-center py-4">
+              <i class="bi bi-check-circle-fill text-success fs-1 mb-3 d-block"></i>
+              <h6 class="text-muted mb-1">No Declined Requests</h6>
+              <p class="text-muted small mb-0">You have no declined leave requests.</p>
+            </div>
+
+            <div class="table-responsive" *ngIf="declinedLeaveRequests.length > 0">
+              <table class="table align-middle mb-0 leave-history-table">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Duration</th>
+                    <th class="text-center">Status</th>
+                    <th>Supervisor's Reason</th>
+                    <th class="text-center">Docs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let leave of declinedLeaveRequests" class="leave-history-row">
+                    <td class="fw-bold text-navy">{{ leave.type }}</td>
+                    <td>
+                      <div class="d-flex flex-column">
+                        <span class="fw-semibold small text-dark">{{ leave.startDate | date:'dd MMM yyyy' }}</span>
+                        <span class="text-muted smaller">to {{ leave.endDate | date:'dd MMM yyyy' }}</span>
+                      </div>
+                    </td>
+                    <td class="text-center">
+                      <span class="status-badge-pill badge-declined">
+                        <i class="bi bi-x-circle-fill"></i> Declined
+                      </span>
+                    </td>
+                    <td>
+                      <div class="d-flex align-items-start gap-2">
+                        <i class="bi bi-chat-left-text-fill text-danger flex-shrink-0 mt-1" style="font-size: 0.75rem;"></i>
+                        <p class="mb-0 small text-muted" [title]="leave.reason || 'No reason provided'" style="max-width: 220px;">
+                          {{ leave.reason || 'No reason provided by supervisor.' }}
+                        </p>
+                      </div>
+                    </td>
+                    <td class="text-center">
+                      <button *ngIf="leave.attachment" (click)="downloadAttachment(leave.attachment!)"
+                        class="btn btn-circle-action btn-primary-subtle" title="Download attachment">
+                        <i class="bi bi-file-earmark-pdf"></i>
+                      </button>
+                      <span *ngIf="!leave.attachment" class="text-muted smaller">No Docs</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div *ngIf="activeSection === 'history'" class="section-animate">
         <!-- Section Header with Navigation - Mobile Only -->
-        <div class="card shadow-sm border-0 rounded-4 mb-4 d-md-none">
+        <div class="card shadow-sm border-0 rounded-0 mb-4 d-md-none">
           <div class="card-header bg-white border-0 py-3 px-4">
             <div class="d-flex justify-content-center align-items-center">
               <div class="btn-group" role="group">

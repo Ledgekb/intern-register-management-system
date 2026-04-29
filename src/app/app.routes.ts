@@ -7,6 +7,7 @@ import { SuperAdminDashboard } from './super-admin/super-admin-dashboard/super-a
 import { SignUp } from './sign-up/sign-up';
 import { ForgotPassword } from './auth/forgot-password/forgot-password';
 import { ResetPassword } from './auth/reset-password/reset-password';
+import { ForcePasswordChange } from './auth/force-password-change/force-password-change';
 import { Profile } from './profile/profile';
 import { AuthGuard } from './guards/auth.guard';
 import { RoleGuard } from './guards/role.guard';
@@ -19,6 +20,11 @@ export const routes: Routes = [
   {
     path: 'profile',
     component: Profile,
+    canActivate: [AuthGuard]
+  },
+  {
+    path: 'auth/force-password-change',
+    component: ForcePasswordChange,
     canActivate: [AuthGuard]
   },
   {

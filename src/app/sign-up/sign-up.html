@@ -5,10 +5,10 @@
         <div class="branding-content">
             <img src="assets/univen-logo.png" alt="University of Venda Logo" class="brand-logo">
             <h1 class="brand-title">University of Venda</h1>
-            <p class="brand-slogan">Intern Online Register System</p>
-            <div class="mt-4">
+            <p class="brand-slogan">Intern Register</p>
+            <div class="mt-4 d-none d-md-block">
                 <img src="assets/welcome-back.png" alt="Welcome Back" class="hanging-logo"
-                    style="max-width: 100px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));">
+                    style="filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));">
             </div>
         </div>
     </div>
@@ -137,6 +137,22 @@
                                 End date must be after start date
                             </div>
                         </div>
+
+                        <!-- Contract Agreement Upload -->
+                        <div class="col-12 mt-2">
+                            <label for="contractFile" class="form-label"><i
+                                    class="bi bi-file-earmark-pdf-fill me-1"></i>Contract Agreement <span
+                                    class="text-danger">*</span></label>
+                            <div class="input-group input-group">
+                                <span class="input-group-text bg-white border-end-0 text-muted"><i
+                                        class="bi bi-file-earmark-arrow-up"></i></span>
+                                <input type="file" class="form-control border-start-0 ps-0" id="contractFile"
+                                    (change)="onContractFileChange($event)" accept=".pdf,.png,.jpg,.jpeg">
+                            </div>
+                            <div class="text-danger small mt-1" *ngIf="contractFileError">{{ contractFileError }}</div>
+                            <div class="text-success small mt-1" *ngIf="contractFileName"><i
+                                    class="bi bi-check-circle me-1"></i>{{ contractFileName }}</div>
+                        </div>
                     </div>
 
                     <div class="d-grid mt-3">
@@ -178,21 +194,24 @@
                             <div class="input-group input-group">
                                 <span class="input-group-text bg-white border-end-0 text-muted"><i
                                         class="bi bi-key"></i></span>
-                                <input [type]="showSignupVerification ? 'text' : 'password'"
-                                    class="form-control border-start-0 ps-0" id="verificationCode"
+                                <input [type]="showSignupVerification ? 'text' : 'password'" class="form-control border-start-0 ps-0" id="verificationCode"
                                     formControlName="verificationCode"
                                     [class.is-invalid]="isFieldInvalid('verificationCode')" placeholder="6-digit code"
                                     maxlength="6">
-                                <button type="button" class="btn btn-outline-secondary btn-sm border-start-0"
-                                    (click)="showSignupVerification = !showSignupVerification">
+                                <button type="button" class="btn btn-outline-secondary border-start-0" 
+                                    (click)="showSignupVerification = !showSignupVerification" tabindex="-1">
                                     <i class="bi" [ngClass]="showSignupVerification ? 'bi-eye-slash' : 'bi-eye'"></i>
                                 </button>
                                 <span class="input-group-text bg-light text-muted"
                                     *ngIf="signupVerificationCode && isSignupCodeSent"
                                     style="font-family: monospace; letter-spacing: 2px; font-weight: bold; cursor: pointer;"
-                                    (click)="copyCode(signupVerificationCode)" title="Click to copy code">
-                                    <span class="blurry-text">{{ signupVerificationCode }}</span> <i
-                                        class="bi bi-clipboard ms-2"></i>
+                                    (click)="signupCountdown === 0 ? sendSignupCode() : copyCode(signupVerificationCode)"
+                                    [title]="signupCountdown === 0 ? 'Click to resend code' : 'Click to copy code'">
+                                    <span class="blurry-text">{{ signupVerificationCode }}</span>
+                                    <i class="bi ms-2"
+                                        [ngClass]="signupCountdown === 0 ? 'bi-arrow-clockwise text-warning' : 'bi-clipboard text-primary'"></i>
+                                    <small *ngIf="signupCountdown === 0" class="ms-1 text-warning"
+                                        style="font-size: 0.7rem; letter-spacing: 0;">Resend</small>
                                 </span>
                             </div>
                             <div class="invalid-feedback" *ngIf="isFieldInvalid('verificationCode')">
@@ -248,11 +267,11 @@
                             <div class="input-group input-group">
                                 <span class="input-group-text bg-white border-end-0 text-muted"><i
                                         class="bi bi-lock"></i></span>
-                                <input [type]="showSignupPassword ? 'text' : 'password'"
-                                    class="form-control border-start-0 ps-0" id="password" formControlName="password"
-                                    [class.is-invalid]="isFieldInvalid('password')" placeholder="Min 8 chars">
-                                <button class="btn btn-outline-secondary btn-sm border-start-0" type="button"
-                                    (click)="showSignupPassword = !showSignupPassword">
+                                <input [type]="showSignupPassword ? 'text' : 'password'" class="form-control border-start-0 ps-0" id="password"
+                                    formControlName="password" [class.is-invalid]="isFieldInvalid('password')"
+                                    placeholder="Min 8 chars">
+                                <button type="button" class="btn btn-outline-secondary border-start-0" 
+                                    (click)="showSignupPassword = !showSignupPassword" tabindex="-1">
                                     <i class="bi" [ngClass]="showSignupPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
                                 </button>
                             </div>
@@ -267,13 +286,12 @@
                             <div class="input-group input-group">
                                 <span class="input-group-text bg-white border-end-0 text-muted"><i
                                         class="bi bi-shield-lock"></i></span>
-                                <input [type]="showSignupConfirmPassword ? 'text' : 'password'"
-                                    class="form-control border-start-0 ps-0" id="confirmPassword"
+                                <input [type]="showSignupConfirmPassword ? 'text' : 'password'" class="form-control border-start-0 ps-0" id="confirmPassword"
                                     formControlName="confirmPassword"
                                     [class.is-invalid]="isFieldInvalid('confirmPassword')"
                                     placeholder="Confirm password">
-                                <button class="btn btn-outline-secondary btn-sm border-start-0" type="button"
-                                    (click)="showSignupConfirmPassword = !showSignupConfirmPassword">
+                                <button type="button" class="btn btn-outline-secondary border-start-0" 
+                                    (click)="showSignupConfirmPassword = !showSignupConfirmPassword" tabindex="-1">
                                     <i class="bi" [ngClass]="showSignupConfirmPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
                                 </button>
                             </div>

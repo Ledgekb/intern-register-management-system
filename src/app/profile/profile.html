@@ -129,6 +129,52 @@
         </div>
       </div>
 
+      <!-- Internship Agreement Card (Intern Only) -->
+      <div class="card shadow-sm mt-4 overflow-hidden border-0" *ngIf="activeTab === 'profile' && getUserRole() === 'INTERN'">
+        <div class="card-header bg-navy text-white py-3">
+          <h5 class="mb-0 fw-bold"><i class="bi bi-file-earmark-text me-2"></i>Internship Agreement</h5>
+        </div>
+        <div class="card-body p-4">
+          <div class="row align-items-center mb-4">
+            <div class="col-12 col-md-8">
+              <h6 class="fw-bold text-navy mb-1">Contract Status:</h6>
+              <div class="d-flex align-items-center">
+                <span class="badge rounded-pill px-3 py-2" [ngClass]="hasContract ? 'bg-success' : 'bg-warning text-dark'">
+                  <i class="bi" [ngClass]="hasContract ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill'"></i>
+                  {{ hasContract ? 'Agreement Uploaded' : 'No Agreement Uploaded' }}
+                </span>
+                <span class="text-muted small ms-2" *ngIf="hasContract">
+                  <i class="bi bi-calendar-check me-1"></i>Last updated recently
+                </span>
+              </div>
+            </div>
+            <div class="col-12 col-md-4 text-md-end mt-3 mt-md-0">
+              <div class="d-flex gap-2 justify-content-md-end">
+                <button type="button" class="btn btn-outline-navy btn-sm px-3 rounded-pill" *ngIf="hasContract && !isLoading" (click)="viewAgreement()">
+                  <i class="bi bi-eye me-1"></i>View
+                </button>
+                <label class="btn btn-navy btn-sm px-3 rounded-pill mb-0 cursor-pointer" [class.disabled]="isLoading">
+                  <span *ngIf="!isLoading">
+                    <i class="bi bi-upload me-1"></i>{{ hasContract ? 'Update' : 'Upload' }}
+                  </span>
+                  <span *ngIf="isLoading">
+                    <span class="spinner-border spinner-border-sm me-1"></span>Uploading...
+                  </span>
+                  <input type="file" class="d-none" (change)="onAgreementFileSelected($event)" accept=".pdf,.jpg,.jpeg,.png" [disabled]="isLoading">
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="alert bg-light border-0 small text-muted mb-0 rounded-3">
+            <i class="bi bi-info-circle-fill text-navy me-2"></i>
+            Students who were bulk-imported may need to upload their signed internship agreement here.
+            <div class="mt-1 ps-4">
+              <strong>Allowed formats:</strong> PDF, JPG, PNG (Max 5MB).
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Password Tab -->
       <div class="card shadow-sm" *ngIf="activeTab === 'password'">
         <div class="card-header bg-gold">

@@ -244,6 +244,13 @@ export class ApiService {
   }
 
   /**
+   * Get Intern Contract Agreement
+   */
+  getInternContractAgreement(internId: number): Observable<any> {
+    return this.get<any>(`interns/${internId}/contract-agreement`);
+  }
+
+  /**
    * Handle HTTP errors
    */
   private handleError = (error: any): Observable<never> => {
@@ -283,7 +290,7 @@ export class ApiService {
         this.router.navigate(['/login']);
       }
 
-      return throwError(() => new Error('Session invalidated. Please login again.'));
+      return throwError(() => error);
     }
 
     if (error.error instanceof ErrorEvent) {
@@ -341,7 +348,9 @@ export class ApiService {
     }
 
     console.error('API Error:', errorMessage, error);
-    return throwError(() => new Error(errorMessage));
+    // Return the original error object instead of just a stringified message
+    // This allows components to read status codes (401, 404, etc.)
+    return throwError(() => error);
   };
 }
 

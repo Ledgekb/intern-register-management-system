@@ -44,7 +44,7 @@
     /* Relative width */
     height: 25%;
     /* Relative height */
-    border-radius: 50px;
+    border-radius: 0;
     background-color: #002855;
     /* Navy Blue Base */
     transform-origin: center 150%;

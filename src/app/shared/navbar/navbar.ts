@@ -41,6 +41,8 @@ export class Navbar implements OnInit, OnDestroy, AfterViewInit {
   isProfileActive: boolean = false;
 
   isSidebarExpanded: boolean = true;
+  currentTime: Date = new Date();
+  private timeInterval: any;
   private subscriptions = new Subscription();
 
   constructor(
@@ -65,39 +67,43 @@ export class Navbar implements OnInit, OnDestroy, AfterViewInit {
         this.cdr.detectChanges();
       })
     );
-    // Get current user from auth service
-    const currentUser = this.authService.getCurrentUserSync();
-    if (currentUser) {
-      console.log('Navbar - API Response User:', currentUser);
+    // Subscribe to current user from auth service
+    this.subscriptions.add(
+      this.authService.currentUser$.subscribe(currentUser => {
+        if (currentUser) {
+          console.log('Navbar - User Updated:', currentUser);
 
-      // Explicitly handle name and surname
-      let displayName = currentUser.name || '';
-      if (currentUser.surname && currentUser.surname !== 'undefined' && currentUser.surname !== 'null') {
-        displayName += ' ' + currentUser.surname;
-      }
+          // Explicitly handle name and surname
+          let displayName = currentUser.name || '';
+          if (currentUser.surname && currentUser.surname !== 'undefined' && currentUser.surname !== 'null') {
+            displayName += ' ' + currentUser.surname;
+          }
 
-      // Fallback to username if name is empty
-      if (!displayName.trim()) {
-        displayName = currentUser.username || 'User';
-      }
+          // Fallback to username if name is empty
+          if (!displayName.trim()) {
+            displayName = currentUser.username || 'User';
+          }
 
-      this.user = {
-        fullName: displayName.trim(),
-        email: currentUser.email,
-        role: currentUser.role,
-        department: currentUser.department || '',
-        field: currentUser.field || ''
-      };
-    } else {
-      // Fallback if no user is logged in
-      this.user = {
-        fullName: 'User',
-        email: '',
-        role: '',
-        department: '',
-        field: ''
-      };
-    }
+          this.user = {
+            fullName: displayName.trim(),
+            email: currentUser.email,
+            role: currentUser.role,
+            department: currentUser.department || '',
+            field: currentUser.field || ''
+          };
+        } else {
+          // Fallback if no user is logged in
+          this.user = {
+            fullName: 'User',
+            email: '',
+            role: '',
+            department: '',
+            field: ''
+          };
+        }
+        this.cdr.detectChanges();
+      })
+    );
 
     // Subscribe to profile tab changes
     this.subscriptions.add(
@@ -129,6 +135,12 @@ export class Navbar implements OnInit, OnDestroy, AfterViewInit {
         this.cdr.detectChanges();
       })
     );
+
+    // Initialize real-time clock
+    this.timeInterval = setInterval(() => {
+      this.currentTime = new Date();
+      this.cdr.detectChanges();
+    }, 1000);
 
     // Close navbar on route change
     this.router.events.pipe(
@@ -174,6 +186,11 @@ export class Navbar implements OnInit, OnDestroy, AfterViewInit {
 
     // Unsubscribe
     this.subscriptions.unsubscribe();
+
+    // Clear time interval
+    if (this.timeInterval) {
+      clearInterval(this.timeInterval);
+    }
   }
 
   setProfileTab(tab: 'profile' | 'password'): void {
@@ -274,7 +291,11 @@ export class Navbar implements OnInit, OnDestroy, AfterViewInit {
       return;
     }
 
-    this.router.navigate(['/profile']);
+    if (currentUser.role === 'SUPER_ADMIN') {
+      this.router.navigate(['/super-admin/super-admin-dashboard'], { queryParams: { section: 'settings' } });
+    } else {
+      this.router.navigate(['/profile']);
+    }
   }
 
   getUserRole(): string {

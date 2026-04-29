@@ -11,6 +11,7 @@ export interface Location {
   radius: number;
   description?: string;
   active?: boolean;
+  allowedStartTime?: string; // Format: "HH:mm"
 }
 
 @Injectable({

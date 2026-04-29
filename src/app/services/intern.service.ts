@@ -18,6 +18,7 @@ export interface Intern {
   field?: string;
   status?: 'Present' | 'Absent' | 'On Leave';
   active?: boolean;
+  hasLoggedIn?: boolean;
   recordsByDay?: {
     [day: string]: {
       action: 'Signed In' | 'Signed Out' | 'On Leave' | 'Absent';
@@ -50,6 +51,9 @@ export interface InternResponse {
   field?: string;
   status?: string;
   active?: boolean;
+  hasLoggedIn?: boolean;
+  hasContract?: boolean;
+  contractAgreement?: string;
 }
 
 @Injectable({
@@ -103,6 +107,20 @@ export class InternService {
   }
 
   /**
+   * Bulk create interns
+   */
+  bulkCreateInterns(interns: InternRequest[], defaultPassword?: string, sendInvites: boolean = false, forcePasswordReset: boolean = true): Observable<any> {
+    return this.api.post<any>('interns/bulk', { interns, defaultPassword, sendInvites, forcePasswordReset });
+  }
+
+  /**
+   * Bulk send invites with custom message
+   */
+  bulkSendInvites(invites: any[], message: string): Observable<any> {
+    return this.api.post<any>('interns/bulk-invite', { invites, message });
+  }
+
+  /**
    * Update intern
    */
   updateIntern(id: number, intern: Partial<InternRequest>): Observable<InternResponse> {
@@ -135,6 +153,27 @@ export class InternService {
    */
   assignLocationToIntern(internId: number, locationId: number | null): Observable<any> {
     return this.api.put<any>(`interns/${internId}/location`, { locationId });
+  }
+
+  /**
+   * Get intern contract agreement
+   */
+  getInternContractAgreement(internId: number): Observable<any> {
+    return this.api.get<any>(`interns/${internId}/contract-agreement`);
+  }
+
+  /**
+   * Upload intern contract agreement
+   */
+  uploadContractAgreement(internId: number, contractAgreement: string): Observable<any> {
+    return this.api.put<any>(`interns/${internId}/contract-agreement`, { contractAgreement });
+  }
+
+  /**
+   * Get current intern's profile
+   */
+  getMyProfile(): Observable<InternResponse> {
+    return this.api.get<InternResponse>('interns/my-profile');
   }
 }
 

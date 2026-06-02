@@ -6,10 +6,14 @@ A comprehensive web-based platform for managing intern registration, attendance 
 The Univen Intern Register System streamlines the administration of internship programs. It provides a secure, roles-based environment for interns, supervisors, and administrators to collaborate and maintain accurate records of work activities.
 
 ## 📚 Documentation
-Detailed documentation is available in the `docs/` directory:
-- [**SRS.md**](docs/SRS.md): System Requirements Specification and user roles.
-- [**ARCHITECTURE.md**](docs/ARCHITECTURE.md): Technical design, tech stack, and data flow.
-- [**API_REFERENCE.md**](docs/API_REFERENCE.md): Backend REST API endpoints and data structures.
+Detailed documentation is available in the `docs/` directory to help you understand the system requirements, architecture, and API:
+
+- 📋 [**Functional Requirements (FRD)**](docs/FRD%20(intern%20registor%20).pdf) - Core system functional specifications.
+- 📑 [**System Requirements Specification (SRS)**](docs/SRS.md) - Detailed requirements and user roles.
+- 🏗️ [**System Architecture**](docs/ARCHITECTURE.md) - Technical design and data flow.
+- 🔗 [**API Reference**](docs/API_REFERENCE.md) - Backend REST API documentation.
+- 📝 [**Software Requirements Document (SRD)**](docs/SRD.md) - Comprehensive project scope.
+- 👤 [**User Stories**](docs/USER_STORIES.md) - User perspectives and acceptance criteria.
 
 ## 🛠️ Tech Stack
 - **Frontend**: Angular 20, Bootstrap 5, Leaflet.js, StompJS.

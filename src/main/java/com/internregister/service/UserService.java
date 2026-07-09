@@ -29,6 +29,10 @@ public class UserService {
         return userRepository.findByEmail(email).stream().findFirst();
     }
 
+    public Optional<User> findByStaffNumber(String staffNumber) {
+        return userRepository.findByStaffNumber(staffNumber).stream().findFirst();
+    }
+
     public boolean checkPassword(String rawPassword, String encodedPassword) {
         return passwordEncoder.matches(rawPassword, encodedPassword);
     }

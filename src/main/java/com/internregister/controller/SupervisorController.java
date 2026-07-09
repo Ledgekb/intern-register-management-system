@@ -9,8 +9,8 @@ import com.internregister.repository.DepartmentRepository;
 import com.internregister.service.SupervisorService;
 import com.internregister.service.WebSocketService;
 import com.internregister.service.ActivityLogService;
+import com.internregister.service.EmailService;
 import com.internregister.util.SecurityUtil;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -33,9 +33,9 @@ public class SupervisorController {
     private final DepartmentRepository departmentRepository;
     private final WebSocketService webSocketService;
     private final ActivityLogService activityLogService;
+    private final EmailService emailService;
     private final SecurityUtil securityUtil;
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
-
 
     @Value("${app.system.url:http://localhost:4200}")
     private String systemUrl;
@@ -47,6 +47,7 @@ public class SupervisorController {
             DepartmentRepository departmentRepository,
             WebSocketService webSocketService,
             ActivityLogService activityLogService,
+            EmailService emailService,
             SecurityUtil securityUtil) {
         this.supervisorService = supervisorService;
         this.supervisorRepository = supervisorRepository;
@@ -54,6 +55,7 @@ public class SupervisorController {
         this.departmentRepository = departmentRepository;
         this.webSocketService = webSocketService;
         this.activityLogService = activityLogService;
+        this.emailService = emailService;
         this.securityUtil = securityUtil;
     }
 
@@ -151,7 +153,8 @@ public class SupervisorController {
     @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN') or hasRole('SUPERVISOR')")
     public ResponseEntity<?> getSupervisorByEmail(@PathVariable String email) {
         try {
-            Optional<Supervisor> supervisorOpt = supervisorRepository.findByEmail(email.trim().toLowerCase()).stream().findFirst();
+            Optional<Supervisor> supervisorOpt = supervisorRepository.findByEmail(email.trim().toLowerCase()).stream()
+                    .findFirst();
             if (supervisorOpt.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(Map.of("error", "Supervisor not found"));
@@ -204,16 +207,20 @@ public class SupervisorController {
     public ResponseEntity<?> createSupervisor(@RequestBody Map<String, Object> body) {
         try {
             String name = (String) body.get("name");
+            String surname = body.get("surname") != null ? body.get("surname").toString() : null;
             String email = (String) body.get("email");
+            String staffNumber = body.get("staffNumber") != null ? (String) body.get("staffNumber") : null;
             Object deptIdObj = body.get("departmentId");
             String field = (String) body.get("field");
-            String password = (String) body.get("password");
 
             if (name == null || name.trim().isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Name is required"));
             }
             if (email == null || email.trim().isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email is required"));
+            }
+            if (staffNumber == null || staffNumber.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Staff Number is required"));
             }
 
             String trimmedEmail = email.trim().toLowerCase();
@@ -225,11 +232,12 @@ public class SupervisorController {
                         "message", "Only University of Venda (@univen.ac.za) email addresses are allowed."));
             }
 
-            // Check if supervisor or user already exists
+            // Check if supervisor or user already exists (by email or staff number)
             if (supervisorRepository.findByEmail(trimmedEmail).stream().findFirst().isPresent() ||
-                    userRepository.findByUsername(trimmedEmail).stream().findFirst().isPresent()) {
+                    userRepository.findByUsername(trimmedEmail).stream().findFirst().isPresent() ||
+                    supervisorRepository.findByStaffNumber(staffNumber.trim()).stream().findFirst().isPresent()) {
                 return ResponseEntity.status(HttpStatus.CONFLICT)
-                        .body(Map.of("error", "Supervisor with this email already exists"));
+                        .body(Map.of("error", "Supervisor with this email or staff number already exists"));
             }
 
             // Get department
@@ -251,20 +259,22 @@ public class SupervisorController {
             User user = new User();
             user.setUsername(trimmedEmail);
             user.setEmail(trimmedEmail);
-            if (password != null && !password.trim().isEmpty()) {
-                user.setPassword(passwordEncoder.encode(password));
-            } else {
-                // Generate a default password if not provided
-                user.setPassword(passwordEncoder.encode("Supervisor123!"));
-            }
+            user.setStaffNumber(staffNumber.trim());
+            // Internal password for database schema compliance (not used for Staff API
+            // login)
+            user.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
             user.setRole(User.Role.SUPERVISOR);
-            user.setRequiresPasswordChange(true);
+            user.setRequiresPasswordChange(false);
             User savedUser = userRepository.save(user);
 
             // Create Supervisor profile
             Supervisor supervisor = new Supervisor();
-            supervisor.setName(name.trim());
+            String fullName = (surname != null && !surname.trim().isEmpty())
+                    ? name.trim() + " " + surname.trim()
+                    : name.trim();
+            supervisor.setName(fullName);
             supervisor.setEmail(trimmedEmail);
+            supervisor.setStaffNumber(staffNumber.trim());
             supervisor.setDepartment(department);
             supervisor.setField(field != null ? field.trim() : null);
             Supervisor savedSupervisor = supervisorService.saveSupervisor(supervisor);
@@ -304,11 +314,180 @@ public class SupervisorController {
                     .ifPresent(currentUser -> activityLogService.log(currentUser.getUsername(), "CREATE_SUPERVISOR",
                             "Created supervisor: " + savedSupervisor.getEmail(), null));
 
+            // Send welcome email
+            try {
+                emailService.sendSupervisorWelcome(savedSupervisor.getEmail(), savedSupervisor.getName());
+            } catch (Exception e) {
+                System.err.println("Failed to send welcome email to supervisor: " + e.getMessage());
+            }
+
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to create supervisor: " + e.getMessage()));
         }
+    }
+
+    /**
+     * Bulk import supervisors from CSV
+     * Expected CSV headers: Name,Surname,Email,StaffNumber,Department,Field
+     */
+    @PostMapping("/bulk-csv")
+    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN')")
+    public ResponseEntity<?> bulkImportSupervisors(@RequestBody Map<String, Object> body) {
+        try {
+            String csvContent = body.get("csvContent") != null ? body.get("csvContent").toString() : null;
+            if (csvContent == null || csvContent.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "CSV content is required"));
+            }
+
+            List<Map<String, Object>> created = new java.util.ArrayList<>();
+            List<Map<String, Object>> skipped = new java.util.ArrayList<>();
+            List<Map<String, Object>> failed = new java.util.ArrayList<>();
+
+            String[] lines = csvContent.split("\n");
+            if (lines.length < 2) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "CSV must have a header row and at least one data row"));
+            }
+
+            // Parse header row (case-insensitive, strip spaces and non-alpha)
+            String[] headers = lines[0].trim().split(",");
+            java.util.Map<String, Integer> headerIndex = new java.util.HashMap<>();
+            for (int i = 0; i < headers.length; i++) {
+                headerIndex.put(headers[i].trim().toLowerCase().replaceAll("[^a-z]", ""), i);
+            }
+
+            for (int lineNum = 1; lineNum < lines.length; lineNum++) {
+                String line = lines[lineNum].trim();
+                if (line.isEmpty())
+                    continue;
+
+                String[] cols = line.split(",", -1);
+                Map<String, Object> rowInfo = new java.util.HashMap<>();
+                rowInfo.put("row", lineNum + 1);
+
+                try {
+                    String name = getCsvValue(cols, headerIndex, "name", "firstname");
+                    String surname = getCsvValue(cols, headerIndex, "surname", "lastname");
+                    String email = getCsvValue(cols, headerIndex, "email");
+                    String staffNumber = getCsvValue(cols, headerIndex, "staffnumber", "staff");
+                    String departmentName = getCsvValue(cols, headerIndex, "department", "dept");
+                    String field = getCsvValue(cols, headerIndex, "field");
+
+                    rowInfo.put("email", email != null ? email : "");
+                    rowInfo.put("name", name != null ? name : "");
+
+                    if (name == null || name.isEmpty() || email == null || email.isEmpty() || staffNumber == null
+                            || staffNumber.isEmpty()) {
+                        rowInfo.put("reason", "Missing required field(s): Name, Email, or StaffNumber");
+                        failed.add(rowInfo);
+                        continue;
+                    }
+
+                    String trimmedEmail = email.trim().toLowerCase();
+                    if (!trimmedEmail.endsWith("@univen.ac.za")) {
+                        rowInfo.put("reason", "Invalid email domain (must be @univen.ac.za)");
+                        failed.add(rowInfo);
+                        continue;
+                    }
+
+                    // Check duplicates
+                    if (supervisorRepository.findByEmail(trimmedEmail).stream().findFirst().isPresent() ||
+                            userRepository.findByUsername(trimmedEmail).stream().findFirst().isPresent() ||
+                            supervisorRepository.findByStaffNumber(staffNumber.trim()).stream().findFirst()
+                                    .isPresent()) {
+                        rowInfo.put("reason", "Supervisor with this email or staff number already exists");
+                        skipped.add(rowInfo);
+                        continue;
+                    }
+
+                    // Resolve department
+                    Department department = null;
+                    if (departmentName != null && !departmentName.trim().isEmpty()) {
+                        department = departmentRepository.findByName(departmentName.trim()).orElse(null);
+                        if (department == null) {
+                            rowInfo.put("reason", "Department '" + departmentName.trim() + "' not found");
+                            failed.add(rowInfo);
+                            continue;
+                        }
+                    }
+
+                    // Create User
+                    com.internregister.entity.User user = new com.internregister.entity.User();
+                    user.setUsername(trimmedEmail);
+                    user.setEmail(trimmedEmail);
+                    user.setStaffNumber(staffNumber.trim());
+                    user.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+                    user.setRole(com.internregister.entity.User.Role.SUPERVISOR);
+                    user.setRequiresPasswordChange(false);
+                    userRepository.save(user);
+
+                    // Create Supervisor profile
+                    com.internregister.entity.Supervisor supervisor = new com.internregister.entity.Supervisor();
+                    String fullName = (surname != null && !surname.trim().isEmpty())
+                            ? name.trim() + " " + surname.trim()
+                            : name.trim();
+                    supervisor.setName(fullName);
+                    supervisor.setEmail(trimmedEmail);
+                    supervisor.setStaffNumber(staffNumber.trim());
+                    if (department != null)
+                        supervisor.setDepartment(department);
+                    if (field != null && !field.trim().isEmpty())
+                        supervisor.setField(field.trim());
+                    supervisorService.saveSupervisor(supervisor);
+
+                    // Send welcome email
+                    try {
+                        emailService.sendSupervisorWelcome(trimmedEmail, name.trim());
+                    } catch (Exception emailEx) {
+                        System.err.println(
+                                "Failed to send welcome email to " + trimmedEmail + ": " + emailEx.getMessage());
+                    }
+
+                    rowInfo.put("department", department != null ? department.getName() : null);
+                    created.add(rowInfo);
+
+                } catch (Exception rowEx) {
+                    rowInfo.put("reason", "Processing error: " + rowEx.getMessage());
+                    failed.add(rowInfo);
+                }
+            }
+
+            // Log bulk activity
+            securityUtil.getCurrentUser().ifPresent(
+                    currentUser -> activityLogService.log(currentUser.getUsername(), "BULK_IMPORT_SUPERVISORS",
+                            "Bulk CSV import: " + created.size() + " created, " + skipped.size() + " skipped, "
+                                    + failed.size() + " failed",
+                            null));
+
+            Map<String, Object> result = new java.util.HashMap<>();
+            result.put("message", "Bulk import completed");
+            result.put("totalProcessed", lines.length - 1);
+            result.put("created", created);
+            result.put("skipped", skipped);
+            result.put("failed", failed);
+            result.put("createdCount", created.size());
+            result.put("skippedCount", skipped.size());
+            result.put("failedCount", failed.size());
+
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Bulk import failed: " + e.getMessage()));
+        }
+    }
+
+    private String getCsvValue(String[] cols, java.util.Map<String, Integer> headerIndex, String... keys) {
+        for (String key : keys) {
+            Integer idx = headerIndex.get(key);
+            if (idx != null && idx < cols.length) {
+                String val = cols[idx].trim().replaceAll("^\"|\"$", "");
+                if (!val.isEmpty())
+                    return val;
+            }
+        }
+        return null;
     }
 
     @PutMapping("/{id}")
@@ -473,8 +652,7 @@ public class SupervisorController {
                     "email", updated.getEmail(),
                     "name", updated.getName(),
                     "department", updated.getDepartment() != null ? updated.getDepartment().getName() : "",
-                    "role", "SUPERVISOR"
-            ));
+                    "role", "SUPERVISOR"));
 
             // Log supervisor update
             securityUtil.getCurrentUser()
@@ -529,6 +707,42 @@ public class SupervisorController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to delete supervisor: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Delete all supervisors and their user accounts (temporary for cleanup)
+     */
+    @DeleteMapping("/all")
+    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN')")
+    public ResponseEntity<?> deleteAllSupervisors() {
+        try {
+            List<Supervisor> allSupervisors = supervisorRepository.findAll();
+            int count = allSupervisors.size();
+
+            for (Supervisor supervisor : allSupervisors) {
+                // Delete associated User
+                userRepository.findByUsername(supervisor.getEmail())
+                        .forEach(userRepository::delete);
+                // Delete Supervisor
+                supervisorRepository.delete(supervisor);
+            }
+
+            // Cleanup any User with Role.SUPERVISOR that might not have a profile
+            userRepository.findByRole(User.Role.SUPERVISOR).forEach(userRepository::delete);
+
+            String msg = "Deleted all " + count + " supervisors and associated user accounts.";
+            System.out.println("✅ " + msg);
+
+            securityUtil.getCurrentUser()
+                    .ifPresent(u -> activityLogService.log(u.getUsername(), "DELETE_ALL_SUPERVISORS", msg, null));
+
+            webSocketService.broadcastSupervisorUpdate("ALL_DELETED", Map.of("message", msg));
+
+            return ResponseEntity.ok(Map.of("message", msg, "count", count));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to delete all supervisors: " + e.getMessage()));
         }
     }
 
@@ -638,16 +852,25 @@ public class SupervisorController {
             String password = (String) body.get("password");
             String inviteLink = (String) body.get("inviteLink");
             String message = (String) body.get("message");
+            String sendToEmail = (String) body.get("sendToEmail");
 
             if (email == null || email.trim().isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email is required"));
             }
 
-            // TODO: Implement actual email sending
-            // For now, just log the information
+            String recipientEmail = (sendToEmail != null && !sendToEmail.trim().isEmpty()) ? sendToEmail.trim() : email.trim();
+
+            // Send actual email using EmailService
+            if (message != null && !message.trim().isEmpty()) {
+                emailService.sendSupervisorInvite(recipientEmail, name, password, inviteLink, message);
+            } else {
+                emailService.sendSupervisorInvite(recipientEmail, name, password);
+            }
+
             System.out.println("===========================================");
-            System.out.println("SUPERVISOR INVITE EMAIL");
-            System.out.println("To: " + email);
+            System.out.println("SUPERVISOR INVITE EMAIL SENT");
+            System.out.println("To: " + recipientEmail);
+            System.out.println("Original Email: " + email);
             System.out.println("Name: " + name);
             if (password != null) {
                 System.out.println("Password: " + password);
@@ -658,7 +881,7 @@ public class SupervisorController {
 
             return ResponseEntity.ok(Map.of(
                     "message", "Invite email sent successfully",
-                    "email", email));
+                    "email", recipientEmail));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to send invite: " + e.getMessage()));

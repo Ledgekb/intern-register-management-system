@@ -21,6 +21,9 @@ public class Admin {
     private String name;
     private String email;
     
+    @Column(unique = true)
+    private String staffNumber;
+    
     private Boolean active = true;
     
     @ManyToOne

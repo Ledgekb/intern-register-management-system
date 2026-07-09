@@ -7,6 +7,10 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import jakarta.servlet.http.HttpServletRequest;
+
 import java.util.Optional;
 
 @Component
@@ -125,6 +129,26 @@ public class SecurityUtil {
                 }
             }
             throw new SecurityException("Access denied. SUPER_ADMIN role required. Current role: " + currentRole);
+        }
+    }
+
+    /**
+     * Get client IP address from current request context
+     */
+    public String getClientIp() {
+        try {
+            ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attrs == null) {
+                return "0.0.0.0";
+            }
+            HttpServletRequest request = attrs.getRequest();
+            String xForwardedFor = request.getHeader("X-Forwarded-For");
+            if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
+                return xForwardedFor.split(",")[0].trim();
+            }
+            return request.getRemoteAddr();
+        } catch (Exception e) {
+            return "0.0.0.0";
         }
     }
 }

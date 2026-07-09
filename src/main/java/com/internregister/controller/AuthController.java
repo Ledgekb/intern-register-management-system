@@ -26,8 +26,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import jakarta.servlet.http.HttpServletRequest;
 
-import java.util.Map;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @CrossOrigin(origins = "*")
@@ -46,13 +47,26 @@ public class AuthController {
     private final RateLimitingService rateLimitingService;
     private final NotificationService notificationService;
     private final ActivityLogService activityLogService;
+    private final com.internregister.service.InternService internService;
+    private final PasswordEncoder passwordEncoder;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.internregister.service.IdVerificationService idVerificationService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.internregister.service.FaceDescriptorService faceDescriptorService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.core.env.Environment env;
 
     public AuthController(UserService userService, JwtTokenProvider jwtTokenProvider, UserRepository userRepository,
             InternRepository internRepository, AdminRepository adminRepository,
             DepartmentRepository departmentRepository,
             SupervisorRepository supervisorRepository, EmailVerificationService emailVerificationService,
             PasswordValidator passwordValidator, RateLimitingService rateLimitingService,
-            NotificationService notificationService, ActivityLogService activityLogService) {
+            NotificationService notificationService, ActivityLogService activityLogService,
+            com.internregister.service.InternService internService) {
+        this.passwordEncoder = new BCryptPasswordEncoder();
         this.userService = userService;
         this.jwtTokenProvider = jwtTokenProvider;
         this.userRepository = userRepository;
@@ -65,6 +79,7 @@ public class AuthController {
         this.rateLimitingService = rateLimitingService;
         this.notificationService = notificationService;
         this.activityLogService = activityLogService;
+        this.internService = internService;
     }
 
     @PostMapping("/login")
@@ -91,28 +106,88 @@ public class AuthController {
             return ResponseEntity.status(400).body(Map.of("error", "Username and password are required"));
         }
 
-        // Find user
+        // Find user by username or email
         String searchUsername = username.trim();
         User user = userService.findByUsername(searchUsername).orElse(null);
-        
-        // If not found and username doesn't contain '@', try with default Univen domain (e.g. for student/staff numbers)
+
+        // If not found by username, try by email
+        if (user == null) {
+            user = userService.findByEmail(searchUsername).orElse(null);
+        }
+
+        // If not found by email, try by staff number
+        if (user == null) {
+            user = userService.findByStaffNumber(searchUsername).orElse(null);
+        }
+
+        // If still not found and doesn't contain '@', try with default Univen domains
+        // (e.g. for staff/student numbers)
         if (user == null && !searchUsername.contains("@")) {
             user = userService.findByUsername(searchUsername + "@univen.ac.za").orElse(null);
             if (user == null) {
                 user = userService.findByUsername(searchUsername + "@mvula.univen.ac.za").orElse(null);
             }
+            if (user == null) {
+                user = userService.findByEmail(searchUsername + "@univen.ac.za").orElse(null);
+            }
+        }
+
+        if (user == null) {
+            System.out.println("🔍 User not found locally, trying Univen API fallback for: " + searchUsername);
+            try {
+                Map<String, Object> univenData = checkUnivenAuth(searchUsername, password);
+                if (univenData != null) {
+                    // Check if student API data is returned (Students must sign up first)
+                    boolean isStudent = univenData.containsKey("student") && univenData.get("student") != null;
+                    if (isStudent) {
+                        System.out.println("⛔ Login denied: Student/Intern has not signed up - " + searchUsername);
+                        rateLimitingService.recordFailedAttempt(clientIp);
+                        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                                "error", "Access Denied",
+                                "message",
+                                "Your Univen student credentials are valid, but you have not registered on this system yet. Please sign up/register first."));
+                    }
+
+                    user = provisionUserFromExternal(univenData, password);
+                    if (user == null) {
+                        // provisionUserFromExternal returned null = staff not pre-registered
+                        System.out.println("⛔ Login denied: Staff not pre-registered - " + searchUsername);
+                        rateLimitingService.recordFailedAttempt(clientIp);
+                        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                                "error", "Access Denied",
+                                "message",
+                                "Your Univen credentials are valid, but your account has not been set up in this system. Please contact your Super Admin to have your account created."));
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("❌ Univen API authentication error: " + e.getMessage());
+            }
+        } else if (!userService.checkPassword(password, user.getPassword())) {
+            System.out.println("🔍 Local password mismatch, checking Univen API for recent updates: " + searchUsername);
+            try {
+                Map<String, Object> univenData = checkUnivenAuth(searchUsername, password);
+                if (univenData != null) {
+                    System.out.println("✅ Univen API verified password. Updating local password.");
+                    user.setPassword(passwordEncoder.encode(password));
+
+                    // ✅ Confirm and update profile from Univen data
+                    updateProfileFromExternal(user, univenData);
+
+                    userRepository.save(user);
+                } else {
+                    System.out.println("✗ Login attempt failed: Invalid password for user - " + username.trim());
+                    rateLimitingService.recordFailedAttempt(clientIp);
+                    return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
+                }
+            } catch (Exception e) {
+                System.err.println("❌ Univen API authentication error during password sync: " + e.getMessage());
+                rateLimitingService.recordFailedAttempt(clientIp);
+                return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
+            }
         }
 
         if (user == null) {
             System.out.println("✗ Login attempt failed: User not found - " + username.trim());
-            rateLimitingService.recordFailedAttempt(clientIp);
-            return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
-        }
-
-        // Verify password - CRITICAL: This must always be checked
-        boolean passwordValid = userService.checkPassword(password, user.getPassword());
-        if (!passwordValid) {
-            System.out.println("✗ Login attempt failed: Invalid password for user - " + username.trim());
             rateLimitingService.recordFailedAttempt(clientIp);
             return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
         }
@@ -163,10 +238,20 @@ public class AuthController {
         userData.put("email", user.getEmail() != null ? user.getEmail() : user.getUsername());
         userData.put("role", user.getRole().name());
         userData.put("requiresPasswordChange", user.getRequiresPasswordChange());
+        if (user.getStaffNumber() != null) {
+            userData.put("staffNumber", user.getStaffNumber());
+        }
+
+        // Include face enrollment status for interns
+        if (user.getRole() == User.Role.INTERN) {
+            boolean hasFace = internService.getInternEntityByEmail(user.getEmail())
+                    .map(internService::hasFaceData)
+                    .orElse(false);
+            userData.put("hasFaceData", hasFace);
+        }
 
         // ✅ Fetch department information from database
-        String userEmail = user.getEmail() != null ? user.getEmail() : user.getUsername();
-        fetchDepartmentInfo(user.getRole(), userEmail, userData);
+        fetchDepartmentInfo(user, userData);
 
         Map<String, Object> response = new java.util.HashMap<>();
         response.put("token", token);
@@ -211,10 +296,20 @@ public class AuthController {
         userData.put("email", user.getEmail() != null ? user.getEmail() : user.getUsername());
         userData.put("role", user.getRole().name());
         userData.put("requiresPasswordChange", user.getRequiresPasswordChange());
+        if (user.getStaffNumber() != null) {
+            userData.put("staffNumber", user.getStaffNumber());
+        }
+
+        // Include face enrollment status for interns
+        if (user.getRole() == User.Role.INTERN) {
+            boolean hasFace = internService.getInternEntityByEmail(user.getEmail())
+                    .map(internService::hasFaceData)
+                    .orElse(false);
+            userData.put("hasFaceData", hasFace);
+        }
 
         // ✅ Fetch department information from database
-        String userEmail = user.getEmail() != null ? user.getEmail() : user.getUsername();
-        fetchDepartmentInfo(user.getRole(), userEmail, userData);
+        fetchDepartmentInfo(user, userData);
 
         return ResponseEntity.ok(userData);
     }
@@ -280,6 +375,44 @@ public class AuthController {
         }
     }
 
+    @PostMapping("/verify-id")
+    public ResponseEntity<?> verifyIdNumber(@RequestBody Map<String, String> body) {
+        String idNumber = body.get("idNumber");
+        if (idNumber == null || idNumber.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("valid", false, "message", "ID number is required"));
+        }
+        Map<String, Object> verificationResult = idVerificationService.verifySouthAfricanId(idNumber.trim());
+        if ((Boolean) verificationResult.get("valid")) {
+            return ResponseEntity.ok(verificationResult);
+        } else {
+            return ResponseEntity.status(400).body(verificationResult);
+        }
+    }
+
+    @PostMapping("/univen-data")
+    public ResponseEntity<?> getUnivenData(@RequestBody Map<String, String> body) {
+        String username = body.get("username");
+        String password = body.get("password");
+
+        if (username == null || password == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Username and password are required"));
+        }
+
+        try {
+            // Use the existing AuthService logic to check external Univen API
+            // I'll replicate the logic here or call a service
+            Map<String, Object> univenData = checkUnivenAuth(username, password);
+            if (univenData != null) {
+                return ResponseEntity.ok(univenData);
+            } else {
+                return ResponseEntity.status(401).body(Map.of("error", "Invalid Univen credentials"));
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(Map.of("error", "Failed to connect to Univen API: " + e.getMessage()));
+        }
+    }
+
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody Map<String, Object> request) {
         try {
@@ -326,14 +459,33 @@ public class AuthController {
                 role = User.Role.valueOf(roleStr.toUpperCase());
             } catch (IllegalArgumentException e) {
                 return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Invalid role. Must be ADMIN, SUPERVISOR, or INTERN"));
+                        .body(Map.of("error", "Invalid role. Must be SUPERVISOR or INTERN"));
+            }
+
+            // Restrict ADMIN and SUPERVISOR registration - Staff must be created by
+            // SuperAdmin/Admin only
+            if (role == User.Role.ADMIN || role == User.Role.SUPERVISOR) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("error",
+                                "Staff registration is restricted. Please contact your Administrator to have your account created."));
+            }
+
+            // Secure Gate: Prevent automatic/bypassed student registration during login fallback
+            if (role == User.Role.INTERN && "UNIVEN".equals(verificationCode.trim())) {
+                System.out.println("⛔ SECURITY ALERT: Intern/Student registration via UNIVEN code blocked for: " + email);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("error", "Access Denied",
+                                "message", "Auto-registration is not allowed for students. Please register/sign up first using a verification code sent to your email."));
             }
 
             // Validate password strength (role-based validation)
+            System.out.println("🔍 Validating password strength for role: " + role);
             PasswordValidator.PasswordValidationResult passwordValidation = passwordValidator.validate(password, role);
             if (!passwordValidation.isValid()) {
+                System.out.println("❌ Password validation failed: " + passwordValidation.getErrorMessage());
                 return ResponseEntity.badRequest().body(Map.of("error", passwordValidation.getErrorMessage()));
             }
+            System.out.println("✅ Password strength validated");
 
             User user = new User();
             user.setUsername(email.trim());
@@ -341,17 +493,23 @@ public class AuthController {
             PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
             user.setPassword(passwordEncoder.encode(password));
             user.setRole(role);
-            
+
             // Interns must be approved by Admin/Supervisor before they can log in
             if (role == User.Role.INTERN) {
                 user.setActive(false);
                 System.out.println("⚠ Intern account created as INACTIVE (Pending Approval)");
+            } else {
+                // Supervisors and others are active by default
+                user.setActive(true);
             }
 
+            System.out.println("🔍 Checking if username already exists: " + user.getUsername());
             if (userRepository.findByUsername(user.getUsername()).stream().findFirst().isPresent()) {
+                System.out.println("❌ Registration failed: Username already exists");
                 return ResponseEntity.badRequest().body(Map.of("error", "Username already exists"));
             }
 
+            System.out.println("🔍 Saving user to database...");
             User savedUser = userService.saveUser(user);
             System.out.println("✓ New user registered and saved to database:");
             System.out.println("  Username: " + savedUser.getUsername());
@@ -370,6 +528,9 @@ public class AuthController {
             } else if (savedUser.getRole() == User.Role.ADMIN) {
                 createAdminProfile(savedUser, request);
             }
+
+            // Clear verification code after successful registration
+            emailVerificationService.removeCode(email.trim());
 
             return ResponseEntity.ok(Map.of(
                     "message", "User registered successfully",
@@ -497,6 +658,16 @@ public class AuthController {
                 idNumber = null;
             }
 
+            // Get passport number from request (international interns)
+            final String passportNumber;
+            Object passportObj = request.get("passportNumber");
+            if (passportObj != null) {
+                String passportValue = passportObj.toString().trim();
+                passportNumber = passportValue.isEmpty() ? null : passportValue;
+            } else {
+                passportNumber = null;
+            }
+
             // Get start date from request
             java.time.LocalDate startDate = null;
             Object startDateObj = request.get("startDate");
@@ -542,7 +713,8 @@ public class AuthController {
 
             // Step 2: If no supervisor found by field, get first supervisor in department
             if (supervisor == null) {
-                Optional<Supervisor> supervisorOpt = supervisorRepository.findByDepartmentIdOrdered(finalDeptId).stream().findFirst();
+                Optional<Supervisor> supervisorOpt = supervisorRepository.findByDepartmentIdOrdered(finalDeptId)
+                        .stream().findFirst();
                 if (supervisorOpt.isPresent()) {
                     supervisor = supervisorOpt.get();
                     System.out.println("✓ Found first supervisor in department: " + supervisor.getName());
@@ -564,8 +736,14 @@ public class AuthController {
                         + defaultSupervisor.getEmail() + ")");
             }
 
+            // Determine if profile is complete (Univen auto-provisioning needs more info)
+            String verificationCode = (String) request.get("verificationCode");
+            boolean isUniven = "UNIVEN".equals(verificationCode);
+
             // Create intern
+            System.out.println("🔍 Creating Intern entity for: " + user.getUsername());
             Intern intern = new Intern();
+            intern.setIsProfileComplete(!isUniven);
             intern.setName(fullName);
             intern.setEmail(user.getUsername());
             intern.setDepartment(department);
@@ -578,6 +756,10 @@ public class AuthController {
             }
             if (idNumber != null && !idNumber.isEmpty()) {
                 intern.setIdNumber(idNumber);
+            }
+            if (passportNumber != null && !passportNumber.isEmpty()) {
+                intern.setPassportNumber(passportNumber);
+                System.out.println("✓ Assigned passport number for international intern: " + passportNumber);
             }
             if (startDate != null) {
                 intern.setStartDate(startDate);
@@ -598,7 +780,7 @@ public class AuthController {
                     System.out.println("✓ Assigned contract agreement base64 string.");
                 }
             }
-            
+
             // New intern profiles are inactive by default until approved
             intern.setActive(false);
 
@@ -633,10 +815,16 @@ public class AuthController {
 
     private void createSupervisorProfile(User user, Map<String, Object> request) {
         try {
-            // Check if supervisor already exists
-            Optional<Supervisor> existingSupervisor = supervisorRepository.findByEmail(user.getUsername()).stream().findFirst();
+            // Check if supervisor already exists (by email or staff number)
+            Optional<Supervisor> existingSupervisor = supervisorRepository.findByEmail(user.getUsername()).stream()
+                    .findFirst();
+            if (existingSupervisor.isEmpty() && user.getStaffNumber() != null) {
+                existingSupervisor = supervisorRepository.findByStaffNumber(user.getStaffNumber()).stream().findFirst();
+            }
+
             if (existingSupervisor.isPresent()) {
-                System.out.println("Supervisor profile already exists for: " + user.getUsername());
+                System.out.println("Supervisor profile already exists for: " + user.getUsername() +
+                        (user.getStaffNumber() != null ? " (Staff: " + user.getStaffNumber() + ")" : ""));
                 return;
             }
 
@@ -700,6 +888,9 @@ public class AuthController {
             supervisor.setName(fullName);
             supervisor.setEmail(user.getUsername());
             supervisor.setDepartment(department);
+            if (user.getStaffNumber() != null) {
+                supervisor.setStaffNumber(user.getStaffNumber());
+            }
             if (field != null && !field.isEmpty()) {
                 supervisor.setField(field);
             }
@@ -718,10 +909,15 @@ public class AuthController {
 
     private void createAdminProfile(User user, Map<String, Object> request) {
         try {
-            // Check if admin already exists
+            // Check if admin already exists (by email or staff number)
             Optional<Admin> existingAdmin = adminRepository.findByEmail(user.getUsername()).stream().findFirst();
+            if (existingAdmin.isEmpty() && user.getStaffNumber() != null) {
+                existingAdmin = adminRepository.findByStaffNumber(user.getStaffNumber()).stream().findFirst();
+            }
+
             if (existingAdmin.isPresent()) {
-                System.out.println("Admin profile already exists for: " + user.getUsername());
+                System.out.println("Admin profile already exists for: " + user.getUsername() +
+                        (user.getStaffNumber() != null ? " (Staff: " + user.getStaffNumber() + ")" : ""));
                 return;
             }
 
@@ -729,16 +925,71 @@ public class AuthController {
             String surname = (String) request.getOrDefault("surname", "");
             String fullName = surname.isEmpty() ? name : name + " " + surname;
 
+            // Get department from request
+            Department department = null;
+            String departmentName = (String) request.get("department");
+            if (departmentName != null && !departmentName.trim().isEmpty()) {
+                department = departmentRepository.findByName(departmentName.trim())
+                        .orElseGet(() -> {
+                            Department dept = new Department();
+                            dept.setName(departmentName.trim());
+                            Department saved = departmentRepository.save(dept);
+                            System.out.println("✓ Created department: " + departmentName.trim());
+                            return saved;
+                        });
+            }
+
             // Create admin
             Admin admin = new Admin();
             admin.setName(fullName);
             admin.setEmail(user.getUsername());
+            admin.setDepartment(department);
+            if (user.getStaffNumber() != null) {
+                admin.setStaffNumber(user.getStaffNumber());
+            }
 
             Admin savedAdmin = adminRepository.save(admin);
             System.out.println("✓ Admin profile created and saved to database:");
             System.out.println("  Name: " + savedAdmin.getName());
             System.out.println("  Email: " + savedAdmin.getEmail());
+            System.out.println("  Department: " + (department != null ? department.getName() : "None"));
             System.out.println("  Admin ID: " + savedAdmin.getAdminId());
+
+            // ✅ Auto-create default supervisor if department is set and has no supervisor
+            if (department != null) {
+                java.util.List<com.internregister.entity.Supervisor> deptSups = supervisorRepository.findByDepartmentId(department.getDepartmentId());
+                if (deptSups.isEmpty()) {
+                    String deptCleanName = department.getName().toLowerCase().replaceAll("[^a-zA-Z0-9]", "");
+                    String supervisorEmail = "supervisor_" + deptCleanName + "@univen.ac.za";
+
+                    // Default supervisor email for standard ICT department
+                    if ("ictdepartment".equals(deptCleanName)) {
+                        supervisorEmail = "supervisor@univen.ac.za";
+                    }
+
+                    if (userRepository.findByUsername(supervisorEmail).isEmpty()) {
+                        // Create User account
+                        User supUser = new User();
+                        supUser.setUsername(supervisorEmail);
+                        supUser.setEmail(supervisorEmail);
+                        supUser.setPassword(passwordEncoder.encode("supervisor123"));
+                        supUser.setRole(User.Role.SUPERVISOR);
+                        supUser.setActive(true);
+                        userRepository.save(supUser);
+
+                        // Create Supervisor profile
+                        Supervisor supervisor = new Supervisor();
+                        supervisor.setName("Default Supervisor - " + department.getName());
+                        supervisor.setEmail(supervisorEmail);
+                        supervisor.setStaffNumber("SUP-" + department.getDepartmentId() + "-DFT");
+                        supervisor.setDepartment(department);
+                        supervisor.setField("Software Development");
+                        supervisorRepository.save(supervisor);
+                        System.out.println("✓ Auto-created default Supervisor user/profile for department: " 
+                            + department.getName() + " (Email: " + supervisorEmail + ", Password: supervisor123)");
+                    }
+                }
+            }
         } catch (Exception e) {
             System.err.println("Error creating admin profile: " + e.getMessage());
             e.printStackTrace();
@@ -889,14 +1140,23 @@ public class AuthController {
         }
     }
 
-    /**
-     * ✅ Fetch department information from database based on user role
-     */
-    private void fetchDepartmentInfo(User.Role role, String email, Map<String, Object> userData) {
+    private void fetchDepartmentInfo(User user, Map<String, Object> userData) {
+        User.Role role = user.getRole();
+        String email = user.getEmail() != null ? user.getEmail() : user.getUsername();
+        String staffNumber = user.getStaffNumber();
+
         try {
             if (role == User.Role.ADMIN) {
-                // ✅ Fetch admin with department
-                Optional<Admin> adminOpt = adminRepository.findByEmailWithDepartment(email).stream().findFirst();
+                // ✅ Fetch admin with department (try staff number first, then email)
+                Optional<Admin> adminOpt = Optional.empty();
+                if (staffNumber != null && !staffNumber.trim().isEmpty()) {
+                    adminOpt = adminRepository.findByStaffNumberWithDepartment(staffNumber).stream().findFirst();
+                }
+
+                if (adminOpt.isEmpty()) {
+                    adminOpt = adminRepository.findByEmailWithDepartment(email).stream().findFirst();
+                }
+
                 if (adminOpt.isPresent()) {
                     Admin admin = adminOpt.get();
                     // ✅ Add name to response
@@ -908,12 +1168,21 @@ public class AuthController {
                         System.out.println("✅ Admin department loaded: " + admin.getDepartment().getName() + " (ID: "
                                 + admin.getDepartment().getDepartmentId() + ")");
                     } else {
-                        System.out.println("⚠️ Admin has no department assigned (email: " + email + ")");
+                        System.out.println("⚠️ Admin has no department assigned (ID: " + user.getId() + ")");
                     }
                 }
             } else if (role == User.Role.SUPERVISOR) {
-                // ✅ Fetch supervisor with department
-                Optional<Supervisor> supervisorOpt = supervisorRepository.findByEmailWithDepartment(email).stream().findFirst();
+                // ✅ Fetch supervisor with department (try staff number first, then email)
+                Optional<Supervisor> supervisorOpt = Optional.empty();
+                if (staffNumber != null && !staffNumber.trim().isEmpty()) {
+                    supervisorOpt = supervisorRepository.findByStaffNumberWithDepartment(staffNumber).stream()
+                            .findFirst();
+                }
+
+                if (supervisorOpt.isEmpty()) {
+                    supervisorOpt = supervisorRepository.findByEmailWithDepartment(email).stream().findFirst();
+                }
+
                 if (supervisorOpt.isPresent()) {
                     Supervisor supervisor = supervisorOpt.get();
                     // ✅ Add name to response
@@ -979,6 +1248,401 @@ public class AuthController {
         } catch (Exception e) {
             System.err.println("❌ Error fetching department info for " + role + " (" + email + "): " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * ✅ Provision a user from Univen API data
+     */
+    private User provisionUserFromExternal(Map<String, Object> data, String password) {
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> userData = (Map<String, Object>) data.get("user");
+            String username = (String) userData.get("username");
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> staffData = (Map<String, Object>) data.get("staff");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> studentData = (Map<String, Object>) data.get("student");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> commData = (Map<String, Object>) data.get("communication");
+
+            String email = null;
+            if (commData != null) {
+                email = (String) commData.get("communicationNumber");
+            }
+            if (email == null) {
+                email = username.contains("@") ? username : username + "@univen.ac.za";
+            }
+
+            String name = "";
+            String surname = "";
+            String staffNumber = null;
+            User.Role role = User.Role.INTERN;
+            String departmentName = null;
+            String field = null;
+
+            if (staffData != null) {
+                name = (String) staffData.get("firstname");
+                surname = (String) staffData.get("surname");
+                staffNumber = (String) staffData.get("staffNumber");
+                departmentName = (String) staffData.get("departmentName");
+                field = (String) staffData.get("postName");
+
+                String fullName = (name == null) ? ""
+                        : (surname == null || surname.isEmpty() ? name : name + " " + surname);
+
+                // ✅ Robust check: Staff must be pre-registered by an Admin/SuperAdmin
+                boolean preCreatedAdmin = (email != null
+                        && adminRepository.findByEmail(email).stream().findFirst().isPresent())
+                        || (staffNumber != null
+                                && adminRepository.findByStaffNumber(staffNumber).stream().findFirst().isPresent())
+                        || (fullName.trim().length() > 3
+                                && !adminRepository.findByNameContainingIgnoreCase(fullName.trim()).isEmpty());
+
+                boolean preCreatedSupervisor = (email != null
+                        && supervisorRepository.findByEmail(email).stream().findFirst().isPresent())
+                        || (staffNumber != null && supervisorRepository.findByStaffNumber(staffNumber).stream()
+                                .findFirst().isPresent());
+
+                if (preCreatedAdmin) {
+                    role = User.Role.ADMIN;
+                    System.out.println(
+                            "✅ Provisioning Staff: " + username + " as ADMIN (Found pre-registered Admin profile)");
+                } else if (preCreatedSupervisor) {
+                    role = User.Role.SUPERVISOR;
+                    System.out.println("✅ Provisioning Staff: " + username
+                            + " as SUPERVISOR (Found pre-registered Supervisor profile)");
+                } else {
+                    // Critical security gate: If not pre-added, deny access
+                    System.out.println("⛔ SECURITY ALERT: Provisioning BLOCKED for Staff: " + username);
+                    System.out.println("   Reason: No pre-registered Admin or Supervisor record found.");
+                    System.out.println(
+                            "   Identity Data: Email=" + email + ", StaffNumber=" + staffNumber + ", Name=" + fullName);
+                    return null;
+                }
+            } else if (studentData != null) {
+                // Students/Interns MUST register (sign up) first, they cannot be automatically provisioned on login
+                System.out.println("⛔ SECURITY ALERT: Auto-provisioning BLOCKED for Student: " + username);
+                System.out.println("   Reason: Students/Interns must sign up/register first.");
+                return null;
+            }
+
+            // Create new User
+            User newUser = new User();
+            newUser.setUsername(username);
+            newUser.setEmail(email);
+            newUser.setPassword(passwordEncoder.encode(password));
+            newUser.setRole(role);
+            newUser.setActive(true);
+            newUser.setRequiresPasswordChange(false);
+            newUser.setStaffNumber(staffNumber);
+
+            User savedUser = userRepository.save(newUser);
+            System.out.println("✅ Local User account created for: " + username);
+
+            // Create Profile
+            Map<String, Object> profileRequest = new java.util.HashMap<>();
+            profileRequest.put("name", name);
+            profileRequest.put("surname", surname);
+            profileRequest.put("department", departmentName);
+            profileRequest.put("field", field);
+
+            if (role == User.Role.ADMIN) {
+                createAdminProfile(savedUser, profileRequest);
+            } else if (role == User.Role.SUPERVISOR) {
+                createSupervisorProfile(savedUser, profileRequest);
+            } else if (role == User.Role.INTERN) {
+                createInternProfile(savedUser, profileRequest);
+            }
+
+            // ✅ Ensure profile is updated with the latest external data
+            updateProfileFromExternal(savedUser, data);
+
+            return savedUser;
+        } catch (Exception e) {
+            System.err.println("❌ Error provisioning user from external data: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * ✅ Update profile data (Admin or Supervisor) from external Univen data
+     */
+    private void updateProfileFromExternal(User user, Map<String, Object> data) {
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> staffData = (Map<String, Object>) data.get("staff");
+            if (staffData == null)
+                return;
+
+            String name = (String) staffData.get("firstname");
+            String surname = (String) staffData.get("surname");
+            String fullName = surname == null || surname.isEmpty() ? name : name + " " + surname;
+            String staffNumber = (String) staffData.get("staffNumber");
+
+            if (user.getRole() == User.Role.ADMIN) {
+                Optional<Admin> adminOpt = adminRepository.findByEmail(user.getEmail()).stream().findFirst();
+                if (adminOpt.isEmpty())
+                    adminOpt = adminRepository.findByEmail(user.getUsername()).stream().findFirst();
+                // 🔍 Fallback to name-based lookup
+                if (adminOpt.isEmpty())
+                    adminOpt = adminRepository.findByNameContainingIgnoreCase(fullName).stream().findFirst();
+
+                if (adminOpt.isPresent()) {
+                    Admin admin = adminOpt.get();
+                    // Update email if it was linked by name but email is different
+                    if (admin.getEmail() == null || admin.getEmail().isEmpty()) {
+                        admin.setEmail(user.getEmail());
+                    }
+                    // Update name if it's empty or generically set
+                    if (admin.getName() == null || admin.getName().isEmpty()
+                            || admin.getName().toLowerCase().contains("admin")) {
+                        admin.setName(fullName);
+                    }
+                    // Update staff number if missing
+                    if (admin.getStaffNumber() == null) {
+                        admin.setStaffNumber(staffNumber);
+                    }
+                    adminRepository.save(admin);
+                    System.out.println("✅ Admin profile confirmed and updated from Univen API: " + user.getEmail());
+                }
+            } else if (user.getRole() == User.Role.SUPERVISOR) {
+                Optional<Supervisor> supervisorOpt = supervisorRepository.findByEmail(user.getEmail()).stream()
+                        .findFirst();
+                if (supervisorOpt.isEmpty())
+                    supervisorOpt = supervisorRepository.findByEmail(user.getUsername()).stream().findFirst();
+                // 🔍 Fallback to name-based lookup
+                if (supervisorOpt.isEmpty())
+                    supervisorOpt = supervisorRepository.findByNameContainingIgnoreCase(fullName).stream().findFirst();
+
+                if (supervisorOpt.isPresent()) {
+                    Supervisor supervisor = supervisorOpt.get();
+                    if (supervisor.getEmail() == null || supervisor.getEmail().isEmpty()) {
+                        supervisor.setEmail(user.getEmail());
+                    }
+                    if (supervisor.getName() == null || supervisor.getName().isEmpty()) {
+                        supervisor.setName(fullName);
+                    }
+                    if (supervisor.getStaffNumber() == null) {
+                        supervisor.setStaffNumber(staffNumber);
+                    }
+                    supervisorRepository.save(supervisor);
+                    System.out
+                            .println("✅ Supervisor profile confirmed and updated from Univen API: " + user.getEmail());
+                }
+            }
+
+            // Also update the User record's staffNumber if missing
+            if (user.getStaffNumber() == null) {
+                user.setStaffNumber(staffNumber);
+                userRepository.save(user);
+            }
+        } catch (Exception e) {
+            System.err.println("❌ Error updating profile from external data: " + e.getMessage());
+        }
+    }
+
+    /**
+     * ✅ Validate credentials and fetch profile data from external Univen API
+     */
+    private Map<String, Object> checkUnivenAuth(String username, String password) throws Exception {
+        String id = username.contains("@") ? username.split("@")[0] : username;
+        String url = "https://univenproduction-integration.azuremicroservices.io/api/user/" + id;
+
+        String auth = id + ":" + password;
+        String encodedAuth = java.util.Base64.getEncoder().encodeToString(auth.getBytes());
+
+        java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+        java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create(url))
+                .header("Authorization", "Basic " + encodedAuth)
+                .header("Accept", "application/json")
+                .timeout(java.time.Duration.ofSeconds(10))
+                .GET()
+                .build();
+
+        System.out.println("🔍 Calling Univen API for pre-fill: " + url);
+        java.net.http.HttpResponse<String> response = client.send(request,
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() == 200) {
+            System.out.println("✅ Univen API returned 200 OK");
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            // Register JavaTimeModule to handle LocalDate if necessary, but here we just
+            // want a Map
+            return mapper.readValue(response.body(),
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+                    });
+        } else {
+            System.out.println("❌ Univen API returned status: " + response.statusCode());
+            return null;
+        }
+    }
+
+    @PostMapping("/update-department")
+    public ResponseEntity<?> updateDepartment(@RequestBody Map<String, Object> body) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()
+                || "anonymousUser".equals(authentication.getPrincipal())) {
+            return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
+        }
+
+        String username = authentication.getName();
+
+        // Try to find user by username first, then by email
+        Optional<User> userOpt = userService.findByUsername(username);
+        if (userOpt.isEmpty()) {
+            userOpt = userService.findByEmail(username);
+        }
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of("error", "User not found"));
+        }
+        User user = userOpt.get();
+
+        Long departmentId;
+        Object deptIdObj = body.get("departmentId");
+        if (deptIdObj instanceof Number) {
+            departmentId = ((Number) deptIdObj).longValue();
+        } else if (deptIdObj instanceof String) {
+            try {
+                departmentId = Long.parseLong((String) deptIdObj);
+            } catch (NumberFormatException e) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Invalid departmentId"));
+            }
+        } else {
+            return ResponseEntity.badRequest().body(Map.of("error", "departmentId is required"));
+        }
+
+        Optional<Department> deptOpt = departmentRepository.findById(departmentId);
+        if (deptOpt.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of("error", "Department not found"));
+        }
+        Department department = deptOpt.get();
+
+        if (user.getRole() == User.Role.ADMIN) {
+            // Try find by email first, then by staff number (username)
+            Optional<Admin> adminOpt = adminRepository.findByEmail(user.getEmail()).stream().findFirst();
+            if (adminOpt.isEmpty()) {
+                adminOpt = adminRepository.findByEmail(user.getUsername()).stream().findFirst();
+            }
+            if (adminOpt.isEmpty() && user.getStaffNumber() != null) {
+                adminOpt = adminRepository.findByStaffNumber(user.getStaffNumber()).stream().findFirst();
+            }
+            if (adminOpt.isPresent()) {
+                Admin admin = adminOpt.get();
+                admin.setDepartment(department);
+                adminRepository.save(admin);
+                System.out.println("✅ Admin department updated to: " + department.getName());
+            } else {
+                System.err.println("⚠️ Admin profile not found for user: " + username);
+                return ResponseEntity.status(404).body(Map.of("error", "Admin profile not found"));
+            }
+        } else if (user.getRole() == User.Role.SUPERVISOR) {
+            Optional<Supervisor> supOpt = supervisorRepository.findByEmail(user.getEmail()).stream().findFirst();
+            if (supOpt.isEmpty()) {
+                supOpt = supervisorRepository.findByEmail(user.getUsername()).stream().findFirst();
+            }
+            if (supOpt.isEmpty() && user.getStaffNumber() != null) {
+                supOpt = supervisorRepository.findByStaffNumber(user.getStaffNumber()).stream().findFirst();
+            }
+            if (supOpt.isPresent()) {
+                Supervisor sup = supOpt.get();
+                sup.setDepartment(department);
+                supervisorRepository.save(sup);
+                System.out.println("✅ Supervisor department updated to: " + department.getName());
+            } else {
+                System.err.println("⚠️ Supervisor profile not found for user: " + username);
+                return ResponseEntity.status(404).body(Map.of("error", "Supervisor profile not found"));
+            }
+        } else {
+            return ResponseEntity.status(403)
+                    .body(Map.of("error", "Only Admins and Supervisors can switch departments via this endpoint"));
+        }
+
+        // Return updated token so the frontend can persist the departmentId immediately
+        Map<String, Object> userData = new java.util.HashMap<>();
+        userData.put("id", user.getId());
+        userData.put("username", user.getUsername());
+        userData.put("email", user.getEmail() != null ? user.getEmail() : user.getUsername());
+        userData.put("role", user.getRole().name());
+        userData.put("requiresPasswordChange", user.getRequiresPasswordChange());
+        if (user.getStaffNumber() != null) {
+            userData.put("staffNumber", user.getStaffNumber());
+        }
+        userData.put("departmentId", department.getDepartmentId());
+        userData.put("department", department.getName());
+
+        String newToken = jwtTokenProvider.createToken(user);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Department updated successfully",
+                "departmentId", department.getDepartmentId(),
+                "departmentName", department.getName(),
+                "token", newToken,
+                "user", userData));
+    }
+
+    /**
+     * Verify an intern's face against their stored profile using local face-api.js.
+     * POST /api/auth/face-verify
+     * Body: { "descriptor": [float array], "email": "<intern email>" }
+     */
+    @PostMapping("/face-verify")
+    public ResponseEntity<?> verifyFace(@RequestBody Map<String, Object> body) {
+        try {
+            String email = (String) body.get("email");
+            List<Double> liveDescriptor = (List<Double>) body.get("descriptor");
+
+            if (email == null || email.isBlank() || liveDescriptor == null || liveDescriptor.size() != 128) {
+                return ResponseEntity.badRequest().body(Map.of("error", "email and a valid 128-dimensional descriptor are required"));
+            }
+
+            // Fetch the intern's stored face descriptor JSON
+            Optional<com.internregister.entity.Intern> internOpt = internRepository.findByEmail(email).stream().findFirst();
+            if (internOpt.isEmpty()) {
+                return ResponseEntity.status(404).body(Map.of("error", "No intern profile found for this email"));
+            }
+
+            String storedFaceData = internOpt.get().getFaceData();
+            if (storedFaceData == null || storedFaceData.isBlank()) {
+                return ResponseEntity.status(404).body(Map.of("error", "No face profile enrolled for this intern"));
+            }
+
+            // Parse stored JSON descriptor array
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            List<Double> storedDescriptor = mapper.readValue(storedFaceData, new com.fasterxml.jackson.core.type.TypeReference<List<Double>>() {});
+
+            // Compare using Euclidean distance
+            // ── SECURITY: Threshold tightened to 0.32 (strict match required) ──────
+            // face-api.js descriptors: 0.0 = identical, 0.6+ = clearly different person
+            // 0.4 (old default) was too lenient and allowed partial matches.
+            // 0.32 requires a high-confidence match — only the enrolled face passes.
+            double threshold = Double.parseDouble(env.getProperty("face.descriptor.threshold", "0.32"));
+            double distance = faceDescriptorService.calculateDistance(storedDescriptor, liveDescriptor);
+            boolean verified = distance <= threshold;
+
+            // Accurate confidence percentage:
+            // distance=0.0 → 100%, distance=0.32 (threshold) → ~47%, distance=0.6+ → 0%
+            // We scale so 0.0=100% and threshold=50% to give meaningful UI feedback
+            double confidence = Math.max(0, Math.min(100, (1.0 - (distance / 0.6)) * 100));
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("verified", verified);
+            response.put("confidence", confidence);
+            response.put("distance", distance);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            String msg = e.getMessage() != null ? e.getMessage() : "Unknown error";
+            return ResponseEntity.status(500).body(Map.of(
+                    "error", "Face verification failed",
+                    "message", msg,
+                    "verified", false,
+                    "confidence", 0));
         }
     }
 }

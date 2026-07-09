@@ -12,18 +12,14 @@ import com.internregister.util.SecurityUtil;
 import com.internregister.repository.AdminRepository;
 import com.internregister.repository.LocationRepository;
 import com.internregister.repository.SupervisorRepository;
-import com.internregister.repository.UserRepository;
 import com.internregister.service.ActivityLogService;
 import com.internregister.service.EmailService;
 import com.internregister.entity.Supervisor;
 import com.internregister.dto.BulkInternRequest;
 import com.internregister.dto.BulkInternInviteRequest;
 import jakarta.validation.Valid;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
-import com.internregister.dto.InternResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.data.domain.Page;
@@ -32,6 +28,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -51,6 +49,7 @@ public class InternController {
     private final SupervisorRepository supervisorRepository;
     private final ActivityLogService activityLogService;
     private final EmailService emailService;
+    private final com.internregister.service.FacePlusPlusService facePlusPlusService;
 
     public InternController(InternService internService,
             SecurityUtil securityUtil,
@@ -59,7 +58,8 @@ public class InternController {
             WebSocketService webSocketService,
             SupervisorRepository supervisorRepository,
             ActivityLogService activityLogService,
-            EmailService emailService) {
+            EmailService emailService,
+            com.internregister.service.FacePlusPlusService facePlusPlusService) {
         this.internService = internService;
         this.securityUtil = securityUtil;
         this.adminRepository = adminRepository;
@@ -68,6 +68,7 @@ public class InternController {
         this.supervisorRepository = supervisorRepository;
         this.activityLogService = activityLogService;
         this.emailService = emailService;
+        this.facePlusPlusService = facePlusPlusService;
     }
 
     @GetMapping
@@ -143,7 +144,7 @@ public class InternController {
 
             User currentUser = currentUserOpt.get();
             Optional<InternResponse> internOpt = internService.getInternByEmail(currentUser.getEmail());
-            
+
             if (internOpt.isPresent()) {
                 return ResponseEntity.ok(internOpt.get());
             } else {
@@ -285,7 +286,8 @@ public class InternController {
             int successCount = 0;
             for (BulkInternInviteRequest.InternInviteData data : inviteRequest.getInvites()) {
                 try {
-                    emailService.sendInternInviteWithCustomMessage(data.getEmail(), data.getName(), inviteRequest.getMessage());
+                    emailService.sendInternInviteWithCustomMessage(data.getEmail(), data.getName(),
+                            inviteRequest.getMessage());
                     successCount++;
                 } catch (Exception e) {
                     System.err.println("❌ Failed to send invite to " + data.getEmail() + ": " + e.getMessage());
@@ -311,8 +313,7 @@ public class InternController {
                 "email", response.getEmail(),
                 "name", response.getName(),
                 "department", response.getDepartmentName() != null ? response.getDepartmentName() : "",
-                "role", "INTERN"
-        ));
+                "role", "INTERN"));
 
         // Log intern update
         securityUtil.getCurrentUser().ifPresent(currentUser -> {
@@ -546,10 +547,11 @@ public class InternController {
      */
     @PutMapping("/{id}/contract-agreement")
     @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('ADMIN') or hasRole('SUPERVISOR') or hasRole('INTERN')")
-    public ResponseEntity<?> updateInternContractAgreement(@PathVariable Long id, @RequestBody Map<String, String> body) {
+    public ResponseEntity<?> updateInternContractAgreement(@PathVariable Long id,
+            @RequestBody Map<String, String> body) {
         try {
             System.out.println("Processing contract upload for intern ID: " + id);
-            
+
             Optional<User> currentUserOpt = securityUtil.getCurrentUser();
             if (currentUserOpt.isEmpty()) {
                 return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
@@ -567,9 +569,10 @@ public class InternController {
             // Security check: Interns can only update their own agreement
             String currentEmail = currentUser.getEmail().toLowerCase().trim();
             String internEmail = intern.getEmail().toLowerCase().trim();
-            
+
             if (currentUser.getRole() == User.Role.INTERN && !currentEmail.equals(internEmail)) {
-                System.err.println("❌ Security violation: Intern " + currentEmail + " tried to update contract for " + internEmail);
+                System.err.println("❌ Security violation: Intern " + currentEmail + " tried to update contract for "
+                        + internEmail);
                 return ResponseEntity.status(403).body(Map.of("error", "You can only update your own agreement"));
             }
 
@@ -578,7 +581,7 @@ public class InternController {
                 System.err.println("❌ Contract agreement content is missing or empty");
                 return ResponseEntity.badRequest().body(Map.of("error", "Contract agreement content is required"));
             }
-            
+
             System.out.println("✓ Valid agreement received (Length: " + contractAgreement.length() + ")");
 
             InternResponse response = internService.updateContractAgreement(id, contractAgreement);
@@ -594,7 +597,8 @@ public class InternController {
         } catch (Exception e) {
             System.err.println("❌ CRITICAL: Failed to update contract agreement: " + e.getMessage());
             e.printStackTrace();
-            return ResponseEntity.status(500).body(Map.of("error", "Failed to update contract agreement: " + e.getMessage()));
+            return ResponseEntity.status(500)
+                    .body(Map.of("error", "Failed to update contract agreement: " + e.getMessage()));
         }
     }
 
@@ -657,6 +661,209 @@ public class InternController {
             e.printStackTrace();
             return ResponseEntity.status(500)
                     .body(Map.of("error", "Failed to assign location: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Get intern face data for facial recognition
+     * GET /api/interns/me/face
+     */
+    @PutMapping("/me/complete-profile")
+    @PreAuthorize("hasRole('INTERN')")
+    public ResponseEntity<?> completeProfile(@RequestBody Map<String, Object> request) {
+        try {
+            Optional<User> currentUserOpt = securityUtil.getCurrentUser();
+            if (currentUserOpt.isEmpty()) {
+                return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
+            }
+
+            User user = currentUserOpt.get();
+            Optional<Intern> internOpt = internService.getInternEntityByEmail(user.getEmail());
+
+            if (internOpt.isEmpty()) {
+                return ResponseEntity.status(404).body(Map.of("error", "Intern profile not found"));
+            }
+
+            internService.completeProfile(internOpt.get(), request);
+
+            // Log activity
+            activityLogService.log(user.getUsername(), "PROFILE_COMPLETE",
+                    "Intern completed their profile setup",
+                    securityUtil.getClientIp());
+
+            return ResponseEntity.ok(internService.getInternByEmail(user.getEmail()).get());
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", "Failed to complete profile: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/me/face")
+    @PreAuthorize("hasRole('INTERN')")
+    public ResponseEntity<?> getInternFaceData() {
+        try {
+            Optional<User> currentUserOpt = securityUtil.getCurrentUser();
+            if (currentUserOpt.isEmpty()) {
+                return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
+            }
+
+            User currentUser = currentUserOpt.get();
+            Optional<Intern> internOpt = internService.getInternEntityByEmail(currentUser.getEmail());
+
+            if (internOpt.isEmpty()) {
+                return ResponseEntity.status(404).body(Map.of("error", "Intern profile not found"));
+            }
+
+            Intern intern = internOpt.get();
+            String faceData = internService.getFaceData(intern);
+
+            if (faceData == null || faceData.trim().isEmpty()) {
+                return ResponseEntity.status(404).body(Map.of("error", "No face data enrolled"));
+            }
+
+            return ResponseEntity.ok(Map.of("faceData", faceData));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", "Failed to retrieve face data: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Check if intern has face data enrolled
+     * GET /api/interns/me/has-face
+     */
+    @GetMapping("/me/has-face")
+    @PreAuthorize("hasRole('INTERN')")
+    public ResponseEntity<?> hasInternFaceData() {
+        try {
+            Optional<User> currentUserOpt = securityUtil.getCurrentUser();
+            if (currentUserOpt.isEmpty()) {
+                return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
+            }
+
+            User currentUser = currentUserOpt.get();
+            Optional<Intern> internOpt = internService.getInternEntityByEmail(currentUser.getEmail());
+
+            if (internOpt.isEmpty()) {
+                return ResponseEntity.status(404).body(Map.of("hasFaceData", false));
+            }
+
+            boolean hasFace = internService.hasFaceData(internOpt.get());
+            return ResponseEntity.ok(Map.of("hasFaceData", hasFace));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", "Failed to check face status"));
+        }
+    }
+
+    /**
+     * Save intern face data for facial recognition using local face-api.js.
+     * Accepts a 128-dimensional float descriptor.
+     * POST /api/interns/me/face
+     *
+     * SECURITY: Face data can only be enrolled ONCE per intern.
+     * Once a face is registered it cannot be overwritten by the intern.
+     * Only an administrator can reset/clear the face via DELETE /api/interns/{id}/face.
+     */
+    @PostMapping("/me/face")
+    @PreAuthorize("hasRole('INTERN')")
+    public ResponseEntity<?> saveInternFaceData(
+            @Valid @RequestBody com.internregister.dto.FaceDescriptorRequest request) {
+        try {
+            Optional<User> currentUserOpt = securityUtil.getCurrentUser();
+            if (currentUserOpt.isEmpty()) {
+                return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
+            }
+
+            User currentUser = currentUserOpt.get();
+            Optional<Intern> internOpt = internService.getInternEntityByEmail(currentUser.getEmail());
+
+            if (internOpt.isEmpty()) {
+                return ResponseEntity.status(404).body(Map.of("error", "Intern profile not found"));
+            }
+
+            Intern intern = internOpt.get();
+
+            // ── SECURITY LOCK ─────────────────────────────────────────────────────────
+            // Block re-enrollment: if a face is already registered, reject the request.
+            // Only an admin can clear the face via DELETE /api/interns/{id}/face.
+            if (intern.getFaceData() != null && !intern.getFaceData().isBlank()) {
+                activityLogService.log(currentUser.getUsername(), "FACE_ENROLLMENT_BLOCKED",
+                        "Attempted to overwrite an already-registered face descriptor — blocked by system", null);
+                return ResponseEntity.status(409).body(Map.of(
+                        "error", "Face already registered",
+                        "message", "Your face has already been enrolled. For security reasons it cannot be changed. Please contact your administrator if you need to re-register."));
+            }
+            // ─────────────────────────────────────────────────────────────────────────
+
+            List<Double> descriptor = request.getDescriptor();
+
+            if (descriptor == null || descriptor.size() != 128) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Invalid face descriptor"));
+            }
+
+            // Serialize descriptor to JSON string
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            String faceData = mapper.writeValueAsString(descriptor);
+
+            // Check for duplicate face across all interns
+            if (internService.isFaceAlreadyEnrolled(faceData, intern.getInternId())) {
+                activityLogService.log(currentUser.getUsername(), "FACE_ENROLLMENT_DUPLICATE",
+                        "Attempted face enrollment matches an already-enrolled intern — blocked", null);
+                return ResponseEntity.status(409).body(Map.of(
+                        "error", "Face already in use",
+                        "message", "This face is already registered to another account. Please contact your administrator."));
+            }
+
+            // Store the JSON descriptor array as the face profile
+            internService.saveFaceData(intern, faceData);
+
+            // Log successful enrollment
+            activityLogService.log(currentUser.getUsername(), "FACE_ENROLLMENT",
+                    "Completed facial recognition enrollment via face-api.js", null);
+
+            return ResponseEntity.ok(Map.of("message", "Facial profile securely saved"));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", "Failed to save face data: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Admin-only endpoint to reset/clear a specific intern's face data.
+     * DELETE /api/interns/{id}/face
+     *
+     * Only ADMIN or SUPER_ADMIN roles can call this. This is the ONLY way a face
+     * can be re-registered after initial enrollment.
+     */
+    @DeleteMapping("/{id}/face")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ResponseEntity<?> resetInternFaceData(@PathVariable Long id) {
+        try {
+            Optional<User> currentUserOpt = securityUtil.getCurrentUser();
+            String adminUsername = currentUserOpt.map(User::getUsername).orElse("UNKNOWN_ADMIN");
+
+            Optional<Intern> internOpt = internService.getInternEntityById(id);
+            if (internOpt.isEmpty()) {
+                return ResponseEntity.status(404).body(Map.of("error", "Intern not found"));
+            }
+
+            Intern intern = internOpt.get();
+
+            if (intern.getFaceData() == null || intern.getFaceData().isBlank()) {
+                return ResponseEntity.ok(Map.of("message", "No face data to clear for this intern"));
+            }
+
+            // Clear the face data — intern must re-enroll from scratch
+            internService.saveFaceData(intern, null);
+
+            activityLogService.log(adminUsername, "FACE_RESET",
+                    "Admin cleared face descriptor for intern: " + intern.getEmail()
+                    + " (ID: " + intern.getInternId() + ")", null);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Face data cleared. The intern can now re-enroll their face."));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", "Failed to reset face data: " + e.getMessage()));
         }
     }
 }

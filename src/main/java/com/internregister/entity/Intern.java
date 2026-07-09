@@ -42,6 +42,9 @@ public class Intern {
     @Column(name = "id_number")
     private String idNumber;
 
+    @Column(name = "passport_number")
+    private String passportNumber;
+
     @Column(name = "start_date")
     private java.time.LocalDate startDate;
 
@@ -54,10 +57,15 @@ public class Intern {
     private InternContract contractDocument;
 
     private Boolean active = true;
+    private Boolean isProfileComplete = true;
 
     @Lob
     @Column(columnDefinition = "LONGBLOB")
     private byte[] signature;
+
+    @Lob
+    @Column(name = "face_data", columnDefinition = "LONGTEXT")
+    private String faceData;
 
     @OneToMany(mappedBy = "intern", cascade = CascadeType.ALL)
     @ToString.Exclude

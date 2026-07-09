@@ -10,6 +10,14 @@ import org.springframework.stereotype.Repository;
 public interface SupervisorRepository extends JpaRepository<Supervisor, Long> {
     java.util.List<Supervisor> findByEmail(String email);
 
+    java.util.List<Supervisor> findByStaffNumber(String staffNumber);
+
+    java.util.List<Supervisor> findByNameContainingIgnoreCase(String name);
+
+    // ✅ Find by staff number with department loaded
+    @Query("SELECT s FROM Supervisor s LEFT JOIN FETCH s.department WHERE s.staffNumber = :staffNumber")
+    java.util.List<Supervisor> findByStaffNumberWithDepartment(@Param("staffNumber") String staffNumber);
+
     // ✅ Find by email with department loaded (using LEFT JOIN FETCH)
     @Query("SELECT s FROM Supervisor s LEFT JOIN FETCH s.department WHERE s.email = :email")
     java.util.List<Supervisor> findByEmailWithDepartment(@Param("email") String email);

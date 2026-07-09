@@ -21,6 +21,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class InternService {
@@ -32,6 +33,7 @@ public class InternService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final com.internregister.repository.InternContractRepository internContractRepository;
+    private final ObjectMapper objectMapper;
 
     public InternService(InternRepository internRepository,
             DepartmentRepository departmentRepository,
@@ -39,7 +41,8 @@ public class InternService {
             LocationRepository locationRepository,
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
-            com.internregister.repository.InternContractRepository internContractRepository) {
+            com.internregister.repository.InternContractRepository internContractRepository,
+            ObjectMapper objectMapper) {
         this.internRepository = internRepository;
         this.departmentRepository = departmentRepository;
         this.supervisorRepository = supervisorRepository;
@@ -47,6 +50,7 @@ public class InternService {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.internContractRepository = internContractRepository;
+        this.objectMapper = objectMapper;
     }
 
     private java.util.Map<String, Boolean> getLoginStatusMap() {
@@ -54,16 +58,28 @@ public class InternService {
             .collect(Collectors.toMap(u -> u.getEmail().toLowerCase(), u -> u.getLastLoginAt() != null, (a, b) -> a));
     }
 
+    /**
+     * Build a fast Set of intern IDs that have contracts — uses a single batch query instead of N queries.
+     */
+    private java.util.Set<Long> getContractSet(List<Intern> interns) {
+        if (interns.isEmpty()) return java.util.Collections.emptySet();
+        List<Long> ids = interns.stream().map(Intern::getInternId).collect(Collectors.toList());
+        return new java.util.HashSet<>(internContractRepository.findInternIdsWithContracts(ids));
+    }
+
     public List<InternResponse> getAllInterns() {
+        List<Intern> interns = internRepository.findAll();
         java.util.Map<String, Boolean> loginStatusMap = getLoginStatusMap();
-        return internRepository.findAll().stream().map(i -> toResponse(i, loginStatusMap)).collect(Collectors.toList());
+        java.util.Set<Long> contractSet = getContractSet(interns);
+        return interns.stream().map(i -> toResponseFast(i, loginStatusMap, contractSet)).collect(Collectors.toList());
     }
 
     public List<InternResponse> getByDepartmentId(Long departmentId) {
         if (departmentId == null) return java.util.Collections.emptyList();
+        List<Intern> interns = internRepository.findByDepartmentId(departmentId);
         java.util.Map<String, Boolean> loginStatusMap = getLoginStatusMap();
-        return internRepository.findByDepartmentId(departmentId).stream().map(i -> toResponse(i, loginStatusMap))
-                .collect(Collectors.toList());
+        java.util.Set<Long> contractSet = getContractSet(interns);
+        return interns.stream().map(i -> toResponseFast(i, loginStatusMap, contractSet)).collect(Collectors.toList());
     }
 
     public Optional<Intern> getInternById(Long id) {
@@ -84,6 +100,18 @@ public class InternService {
         // Return first matching intern profile
         java.util.Map<String, Boolean> loginStatusMap = getLoginStatusMap();
         return Optional.of(toResponse(interns.get(0), loginStatusMap));
+    }
+
+    public Optional<Intern> getInternEntityByEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return Optional.empty();
+        }
+        
+        java.util.List<Intern> interns = internRepository.findByEmail(email);
+        if (interns.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(interns.get(0));
     }
 
     public InternResponse createIntern(InternRequest request) {
@@ -395,6 +423,47 @@ public class InternService {
         java.util.Map<String, Boolean> loginStatusMap = getLoginStatusMap();
         return result.map(i -> toResponse(i, loginStatusMap));
     }
+    /**
+     * Fast list response: uses pre-built maps/sets to avoid N+1 queries.
+     */
+    private InternResponse toResponseFast(Intern intern, java.util.Map<String, Boolean> loginStatusMap, java.util.Set<Long> contractSet) {
+        InternResponse res = new InternResponse();
+        res.setId(intern.getInternId());
+        res.setName(intern.getName());
+        res.setEmail(intern.getEmail());
+        if (intern.getDepartment() != null) {
+            res.setDepartmentId(intern.getDepartment().getDepartmentId());
+            res.setDepartmentName(intern.getDepartment().getName());
+        }
+        if (intern.getSupervisor() != null) {
+            res.setSupervisorId(intern.getSupervisor().getSupervisorId());
+            res.setSupervisorName(intern.getSupervisor().getName());
+        }
+        if (intern.getLocation() != null) {
+            res.setLocationId(intern.getLocation().getLocationId());
+            res.setLocationName(intern.getLocation().getName());
+        }
+        res.setField(intern.getField());
+        res.setEmployer(intern.getEmployer());
+        res.setIdNumber(intern.getIdNumber());
+        res.setStartDate(intern.getStartDate());
+        res.setEndDate(intern.getEndDate());
+        res.setContractAgreement(null);
+        res.setHasContract(contractSet != null && contractSet.contains(intern.getInternId()));
+        res.setActive(intern.getActive());
+        res.setIsProfileComplete(intern.getIsProfileComplete());
+        if (loginStatusMap != null && intern.getEmail() != null) {
+            res.setHasLoggedIn(loginStatusMap.getOrDefault(intern.getEmail().toLowerCase(), false));
+        } else {
+            res.setHasLoggedIn(false);
+        }
+        return res;
+    }
+
+    /**
+     * Single-intern response (used when fetching one intern by email, ID, etc.)
+     * Still uses direct queries since it's for individual lookups.
+     */
     private InternResponse toResponse(Intern intern, java.util.Map<String, Boolean> loginStatusMap) {
         InternResponse res = toResponse(intern);
         if (loginStatusMap != null && intern.getEmail() != null) {
@@ -422,27 +491,130 @@ public class InternService {
             res.setLocationId(intern.getLocation().getLocationId());
             res.setLocationName(intern.getLocation().getName());
         }
-        // Include field and employer from intern entity
         res.setField(intern.getField());
         res.setEmployer(intern.getEmployer());
         res.setIdNumber(intern.getIdNumber());
         res.setStartDate(intern.getStartDate());
         res.setEndDate(intern.getEndDate());
-        // Do not return massive base64 payloads on the main list response
         res.setContractAgreement(null);
-        
-        // Optimize whether to show contract flag by checking if document is mapped
         boolean hasContract = internContractRepository.findByIntern_InternId(intern.getInternId()).isPresent();
         res.setHasContract(hasContract);
         res.setActive(intern.getActive());
-        
+        res.setIsProfileComplete(intern.getIsProfileComplete());
         String email = intern.getEmail();
         if (email != null) {
             userRepository.findByEmail(email).stream().findFirst().ifPresent(user -> {
                 res.setHasLoggedIn(user.getLastLoginAt() != null);
             });
         }
-        
         return res;
+    }
+
+    public void saveFaceData(Intern intern, String faceData) {
+        intern.setFaceData(faceData);
+        internRepository.save(intern);
+    }
+
+    /**
+     * Look up an intern entity by its primary key (internId).
+     * Used by admin endpoints such as the face-reset endpoint.
+     */
+    public Optional<Intern> getInternEntityById(Long id) {
+        return internRepository.findById(id);
+    }
+
+    /**
+     * Checks if a face descriptor is already enrolled in the system.
+     * Uses Euclidean distance to compare descriptors.
+     * @param faceDataJson The new face descriptor as a JSON string array
+     * @param currentInternId The ID of the intern currently enrolling (to exclude them from the check)
+     * @return true if a matching face is found, false otherwise
+     */
+    public boolean isFaceAlreadyEnrolled(String faceDataJson, Long currentInternId) {
+        if (faceDataJson == null || faceDataJson.trim().isEmpty()) {
+            return false;
+        }
+
+        try {
+            double[] newDescriptor = objectMapper.readValue(faceDataJson, double[].class);
+            List<Intern> enrolledInterns = internRepository.findByFaceDataIsNotNull();
+
+            for (Intern other : enrolledInterns) {
+                // Skip the current intern if they are re-enrolling
+                if (currentInternId != null && currentInternId.equals(other.getInternId())) {
+                    continue;
+                }
+
+                String otherFaceData = other.getFaceData();
+                if (otherFaceData == null || otherFaceData.trim().isEmpty()) {
+                    continue;
+                }
+
+                try {
+                    double[] otherDescriptor = objectMapper.readValue(otherFaceData, double[].class);
+                    double distance = calculateEuclideanDistance(newDescriptor, otherDescriptor);
+
+                    // ── SECURITY: Threshold tightened to 0.35 ──────────────────────────────
+                    // Enrollment duplicate check must be at least as strict as the login check (0.32)
+                    // Using 0.35 gives a small safety margin above the login threshold.
+                    if (distance < 0.35) {
+                        System.out.println("⚠️ Duplicate face detected! New face is too similar to intern: "
+                            + other.getName() + " (Email: " + other.getEmail() + "), Distance: " + distance);
+                        return true;
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error parsing face data for intern ID " + other.getInternId() + ": " + e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error parsing new face data: " + e.getMessage());
+        }
+
+        return false;
+    }
+
+    private double calculateEuclideanDistance(double[] desc1, double[] desc2) {
+        if (desc1.length != desc2.length) {
+            return 1.0; // Max distance if lengths mismatch
+        }
+        double sum = 0;
+        for (int i = 0; i < desc1.length; i++) {
+            sum += Math.pow(desc1[i] - desc2[i], 2);
+        }
+        return Math.sqrt(sum);
+    }
+
+    public String getFaceData(Intern intern) {
+        return intern.getFaceData();
+    }
+
+    public boolean hasFaceData(Intern intern) {
+        return intern.getFaceData() != null && !intern.getFaceData().trim().isEmpty();
+    }
+
+    @Transactional
+    public Intern completeProfile(Intern intern, java.util.Map<String, Object> data) {
+        if (data.containsKey("employer")) {
+            intern.setEmployer((String) data.get("employer"));
+        }
+        if (data.containsKey("field")) {
+            intern.setField((String) data.get("field"));
+        }
+        if (data.containsKey("startDate")) {
+            intern.setStartDate(java.time.LocalDate.parse((String) data.get("startDate")));
+        }
+        if (data.containsKey("endDate")) {
+            intern.setEndDate(java.time.LocalDate.parse((String) data.get("endDate")));
+        }
+        if (data.containsKey("departmentName")) {
+            String deptName = (String) data.get("departmentName");
+            departmentRepository.findByName(deptName).ifPresent(intern::setDepartment);
+        }
+        
+        // Mark as complete
+        intern.setIsProfileComplete(true);
+        
+        // Save and return
+        return internRepository.save(intern);
     }
 }

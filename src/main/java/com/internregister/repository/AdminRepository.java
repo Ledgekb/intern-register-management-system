@@ -12,19 +12,27 @@ import java.util.List;
 @Repository
 public interface AdminRepository extends JpaRepository<Admin, Long> {
     java.util.List<Admin> findByEmail(String email);
-    
+
+    java.util.List<Admin> findByStaffNumber(String staffNumber);
+
+    java.util.List<Admin> findByNameContainingIgnoreCase(String name);
+
+    // ✅ Find by staff number with department loaded
+    @Query("SELECT a FROM Admin a LEFT JOIN FETCH a.department WHERE a.staffNumber = :staffNumber")
+    java.util.List<Admin> findByStaffNumberWithDepartment(@Param("staffNumber") String staffNumber);
+
     // ✅ Find by email with department loaded (using LEFT JOIN FETCH)
     @Query("SELECT a FROM Admin a LEFT JOIN FETCH a.department WHERE a.email = :email")
     java.util.List<Admin> findByEmailWithDepartment(@Param("email") String email);
-    
+
     // ✅ Find all admins with department loaded
-    @EntityGraph(attributePaths = {"department"})
+    @EntityGraph(attributePaths = { "department" })
     @Override
     @NonNull
     List<Admin> findAll();
-    
+
     // ✅ Find by ID with department loaded
-    @EntityGraph(attributePaths = {"department"})
+    @EntityGraph(attributePaths = { "department" })
     @Override
     @NonNull
     java.util.Optional<Admin> findById(@NonNull Long id);

@@ -45,7 +45,7 @@ public class Department {
     @JsonIgnoreProperties({"department", "interns"})
     private List<Supervisor> supervisors;
 
-    @OneToMany(mappedBy = "department", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "department", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @ToString.Exclude
     @JsonIgnoreProperties({"department"})
     private List<com.internregister.entity.Field> fields;

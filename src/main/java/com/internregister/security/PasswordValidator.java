@@ -32,8 +32,8 @@ public class PasswordValidator {
         
         // For INTERN role, use less strict requirements
         if (role == User.Role.INTERN) {
-            if (password.length() < 6) {
-                return PasswordValidationResult.invalid("Password must be at least 6 characters long");
+            if (password.length() < 4) {
+                return PasswordValidationResult.invalid("Password must be at least 4 characters long");
             }
             // For interns, just require minimum length - no special characters required
             return PasswordValidationResult.valid();

@@ -16,6 +16,9 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
+    @Column(unique = true)
+    private String staffNumber;
+
     @Column(nullable = false)
     private String password;
 
@@ -83,6 +86,14 @@ public class User {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getStaffNumber() {
+        return staffNumber;
+    }
+
+    public void setStaffNumber(String staffNumber) {
+        this.staffNumber = staffNumber;
     }
 
     public Long getId() {

@@ -17,41 +17,43 @@ import java.io.IOException;
  */
 @Configuration
 public class SecurityHeadersConfig {
-    
+
     @Bean
     public OncePerRequestFilter securityHeadersFilter() {
         return new SecurityHeadersFilter();
     }
-    
+
     private static class SecurityHeadersFilter extends OncePerRequestFilter {
         @Override
-        protected void doFilterInternal(@NonNull HttpServletRequest request, 
-                                      @NonNull HttpServletResponse response, 
-                                      @NonNull FilterChain filterChain) 
+        protected void doFilterInternal(@NonNull HttpServletRequest request,
+                @NonNull HttpServletResponse response,
+                @NonNull FilterChain filterChain)
                 throws ServletException, IOException {
-            
+
             // Skip security headers for OPTIONS requests (CORS preflight)
             if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
                 filterChain.doFilter(request, response);
                 return;
             }
-            
+
             // Prevent XSS attacks
             response.setHeader("X-Content-Type-Options", "nosniff");
             response.setHeader("X-Frame-Options", "DENY");
             response.setHeader("X-XSS-Protection", "1; mode=block");
-            
+
             // Prevent clickjacking - Allow cross-origin for development
-            // For production, consider: default-src 'self'; connect-src 'self' http://localhost:*
-            // Relaxed CSP for development - allow all connections
-            response.setHeader("Content-Security-Policy", "default-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:* https://localhost:*; connect-src 'self' http://localhost:* https://localhost:* ws://localhost:* wss://localhost:*; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:*; style-src 'self' 'unsafe-inline' http://localhost:*;");
-            
+            // For production, consider: default-src 'self'; connect-src 'self'
+            // http://localhost:*
+            // Relaxed CSP for development - allow all local network connections
+            response.setHeader("Content-Security-Policy",
+                    "default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' http: https: ws: wss:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';");
+
             // Prevent MIME type sniffing
             response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-            
+
             // Referrer policy
             response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-            
+
             // Ensure CORS headers are not blocked - Allow all origins for development
             String origin = request.getHeader("Origin");
             if (origin != null) {
@@ -60,9 +62,8 @@ public class SecurityHeadersConfig {
                 response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
                 response.setHeader("Access-Control-Allow-Headers", "*");
             }
-            
+
             filterChain.doFilter(request, response);
         }
     }
 }
-

@@ -3,13 +3,15 @@ package com.internregister.controller;
 import com.internregister.entity.Admin;
 import com.internregister.entity.User;
 import com.internregister.entity.Department;
+import com.internregister.entity.Supervisor;
 import com.internregister.repository.AdminRepository;
 import com.internregister.repository.UserRepository;
 import com.internregister.repository.DepartmentRepository;
-import com.internregister.service.UserService;
+import com.internregister.repository.SupervisorRepository;
 import com.internregister.service.WebSocketService;
 import com.internregister.service.ActivityLogService;
 import com.internregister.util.SecurityUtil;
+import com.internregister.service.EmailService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -29,24 +31,30 @@ public class SuperAdminController {
     private final AdminRepository adminRepository;
     private final UserRepository userRepository;
     private final DepartmentRepository departmentRepository;
+    private final SupervisorRepository supervisorRepository;
     private final SecurityUtil securityUtil;
     private final WebSocketService webSocketService;
     private final ActivityLogService activityLogService;
+    private final EmailService emailService;
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     public SuperAdminController(
             AdminRepository adminRepository,
             UserRepository userRepository,
             DepartmentRepository departmentRepository,
+            SupervisorRepository supervisorRepository,
             SecurityUtil securityUtil,
             WebSocketService webSocketService,
-            ActivityLogService activityLogService) {
+            ActivityLogService activityLogService,
+            EmailService emailService) {
         this.adminRepository = adminRepository;
         this.userRepository = userRepository;
         this.departmentRepository = departmentRepository;
+        this.supervisorRepository = supervisorRepository;
         this.securityUtil = securityUtil;
         this.webSocketService = webSocketService;
         this.activityLogService = activityLogService;
+        this.emailService = emailService;
     }
 
     /**
@@ -121,6 +129,9 @@ public class SuperAdminController {
 
             String email = body.get("email");
             String name = body.getOrDefault("name", "");
+            String sendToEmail = body.get("sendToEmail");
+            String inviteLink = body.get("inviteLink");
+            String message = body.get("message");
 
             if (email == null || email.trim().isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email is required"));
@@ -135,23 +146,36 @@ public class SuperAdminController {
                         "message", "Only University of Venda (@univen.ac.za) email addresses are allowed."));
             }
 
-            // Check if admin already exists
-            if (adminRepository.findByEmail(trimmedEmail).stream().findFirst().isPresent() ||
-                    userRepository.findByUsername(trimmedEmail).stream().findFirst().isPresent()) {
-                return ResponseEntity.status(HttpStatus.CONFLICT)
-                        .body(Map.of("error", "Admin with this email already exists"));
+            // Generate a temporary password for the invite
+            String tempPassword = UUID.randomUUID().toString().substring(0, 8) + "1!Aa";
+
+            String recipientEmail = (sendToEmail != null && !sendToEmail.trim().isEmpty()) ? sendToEmail.trim() : trimmedEmail;
+
+            // Send actual invitation email via EmailService
+            if (message != null && !message.trim().isEmpty() && inviteLink != null) {
+                emailService.sendAdminInvite(recipientEmail, name, tempPassword, inviteLink, message);
+            } else {
+                emailService.sendAdminInvite(recipientEmail, name, tempPassword);
             }
 
-            // TODO: Send actual invitation email
             System.out.println("===========================================");
-            System.out.println("ADMIN INVITATION EMAIL");
-            System.out.println("To: " + trimmedEmail);
+            System.out.println("ADMIN INVITATION EMAIL SENT");
+            System.out.println("To: " + recipientEmail);
+            System.out.println("Original Email: " + trimmedEmail);
             System.out.println("Name: " + name);
+            System.out.println("Temp Password: " + tempPassword);
+            if (inviteLink != null) {
+                System.out.println("Invite Link: " + inviteLink);
+            }
+            if (message != null) {
+                System.out.println("Message: " + message);
+            }
             System.out.println("===========================================");
 
             return ResponseEntity.ok(Map.of(
                     "message", "Invitation email sent successfully",
-                    "email", trimmedEmail));
+                    "email", recipientEmail,
+                    "tempPassword", tempPassword));
         } catch (SecurityException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
@@ -169,8 +193,9 @@ public class SuperAdminController {
             securityUtil.requireSuperAdmin();
 
             String name = body.get("name") != null ? body.get("name").toString() : null;
+            String surname = body.get("surname") != null ? body.get("surname").toString() : null;
             String email = body.get("email") != null ? body.get("email").toString() : null;
-            String password = body.get("password") != null ? body.get("password").toString() : null;
+            String staffNumber = body.get("staffNumber") != null ? body.get("staffNumber").toString() : null;
             String signature = body.get("signature") != null ? body.get("signature").toString() : null;
             Object departmentIdObj = body.get("departmentId");
 
@@ -184,9 +209,14 @@ public class SuperAdminController {
             if (email == null || email.trim().isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email is required"));
             }
-            if (password == null || password.trim().isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Password is required"));
+
+            if (staffNumber == null || staffNumber.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Staff Number is required"));
             }
+
+            // For Univen API accounts, we'll set a default local password of "admin123"
+            // as a fallback in case the Univen API is offline or times out.
+            String defaultPassword = "admin123";
 
             String trimmedEmail = email.trim().toLowerCase();
 
@@ -197,26 +227,33 @@ public class SuperAdminController {
                         "message", "Only University of Venda (@univen.ac.za) email addresses are allowed."));
             }
 
-            // Check if user already exists
+            // Check if user already exists (by email or staff number)
             if (userRepository.findByUsername(trimmedEmail).stream().findFirst().isPresent() ||
-                    adminRepository.findByEmail(trimmedEmail).stream().findFirst().isPresent()) {
+                    adminRepository.findByEmail(trimmedEmail).stream().findFirst().isPresent() ||
+                    adminRepository.findByStaffNumber(staffNumber.trim()).stream().findFirst().isPresent()) {
                 return ResponseEntity.status(HttpStatus.CONFLICT)
-                        .body(Map.of("error", "Admin with this email already exists"));
+                        .body(Map.of("error", "Admin with this email or staff number already exists"));
             }
 
             // Create User
             User user = new User();
             user.setUsername(trimmedEmail);
             user.setEmail(trimmedEmail);
-            user.setPassword(passwordEncoder.encode(password));
+            user.setStaffNumber(staffNumber.trim());
+            user.setPassword(passwordEncoder.encode(defaultPassword));
             user.setRole(User.Role.ADMIN);
-            user.setRequiresPasswordChange(true);
+            user.setRequiresPasswordChange(false); // No local password change required
             User savedUser = userRepository.save(user);
 
             // Create Admin profile
             Admin admin = new Admin();
-            admin.setName(name.trim());
+            // Combine name and surname for retrieval
+            String fullName = (surname != null && !surname.trim().isEmpty())
+                    ? name.trim() + " " + surname.trim()
+                    : name.trim();
+            admin.setName(fullName);
             admin.setEmail(trimmedEmail);
+            admin.setStaffNumber(staffNumber.trim());
 
             // Set department if provided - handle different types (Number, String, null)
             Long departmentId = null;
@@ -253,6 +290,43 @@ public class SuperAdminController {
 
             Admin savedAdmin = adminRepository.save(admin);
 
+            // ✅ Auto-create default supervisor if department is set and has no supervisor
+            if (savedAdmin.getDepartment() != null) {
+                Department department = savedAdmin.getDepartment();
+                List<Supervisor> deptSups = supervisorRepository.findByDepartmentId(department.getDepartmentId());
+                if (deptSups.isEmpty()) {
+                    String deptCleanName = department.getName().toLowerCase().replaceAll("[^a-zA-Z0-9]", "");
+                    String supervisorEmail = "supervisor_" + deptCleanName + "@univen.ac.za";
+
+                    // Default supervisor email for standard ICT department
+                    if ("ictdepartment".equals(deptCleanName)) {
+                        supervisorEmail = "supervisor@univen.ac.za";
+                    }
+
+                    if (userRepository.findByUsername(supervisorEmail).isEmpty()) {
+                        // Create User account
+                        User supUser = new User();
+                        supUser.setUsername(supervisorEmail);
+                        supUser.setEmail(supervisorEmail);
+                        supUser.setPassword(passwordEncoder.encode("supervisor123"));
+                        supUser.setRole(User.Role.SUPERVISOR);
+                        supUser.setActive(true);
+                        userRepository.save(supUser);
+
+                        // Create Supervisor profile
+                        Supervisor supervisor = new Supervisor();
+                        supervisor.setName("Default Supervisor - " + department.getName());
+                        supervisor.setEmail(supervisorEmail);
+                        supervisor.setStaffNumber("SUP-" + department.getDepartmentId() + "-DFT");
+                        supervisor.setDepartment(department);
+                        supervisor.setField("Software Development");
+                        supervisorRepository.save(supervisor);
+                        System.out.println("✓ Auto-created default Supervisor user/profile for department: " 
+                            + department.getName() + " (Email: " + supervisorEmail + ", Password: supervisor123)");
+                    }
+                }
+            }
+
             // Log admin creation
             securityUtil.getCurrentUser()
                     .ifPresent(currentUser -> activityLogService.log(currentUser.getUsername(), "CREATE_ADMIN",
@@ -262,7 +336,10 @@ public class SuperAdminController {
 
             // Fetch final object to return
             // Reload admin to ensure department is properly loaded
-            savedAdmin = adminRepository.findById(savedAdmin.getAdminId()).orElse(savedAdmin);
+            Long adminId = savedAdmin.getAdminId();
+            if (adminId != null) {
+                savedAdmin = adminRepository.findById(adminId).orElse(savedAdmin);
+            }
 
             // Set signature if provided
             if (signature != null && !signature.trim().isEmpty()) {
@@ -275,6 +352,7 @@ public class SuperAdminController {
             System.out.println("  User ID: " + savedUser.getId());
             System.out.println("  Name: " + savedAdmin.getName());
             System.out.println("  Email: " + savedAdmin.getEmail());
+            System.out.println("  Staff Number: " + savedAdmin.getStaffNumber());
             if (savedAdmin.getDepartment() != null) {
                 System.out.println("  Department: " + savedAdmin.getDepartment().getName() + " (ID: "
                         + savedAdmin.getDepartment().getDepartmentId() + ")");
@@ -282,7 +360,10 @@ public class SuperAdminController {
                 System.out.println("  Department: null (not assigned)");
             }
 
-            // TODO: Send account creation email with credentials
+            // Since we are using Univen Staff API, we don't send a local password.
+            // We just send a welcome email informing them they can log in with their
+            // credentials.
+            emailService.sendAdminWelcome(trimmedEmail, name.trim());
 
             Map<String, Object> response = new HashMap<>();
             response.put("message", "Admin created successfully");
@@ -290,14 +371,13 @@ public class SuperAdminController {
             response.put("userId", savedUser.getId());
             response.put("email", savedAdmin.getEmail());
             response.put("name", savedAdmin.getName());
+            response.put("staffNumber", savedAdmin.getStaffNumber());
             if (savedAdmin.getDepartment() != null) {
                 response.put("departmentId", savedAdmin.getDepartment().getDepartmentId());
                 response.put("departmentName", savedAdmin.getDepartment().getName());
-                System.out.println("✓ Response includes departmentId: " + savedAdmin.getDepartment().getDepartmentId());
             } else {
                 response.put("departmentId", null);
                 response.put("departmentName", null);
-                System.out.println("⚠ Response departmentId is null - department was not set");
             }
 
             // Broadcast real-time update
@@ -313,6 +393,167 @@ public class SuperAdminController {
     }
 
     /**
+     * Bulk import admins from CSV (Super Admin only)
+     * Expected CSV headers: Name,Surname,Email,StaffNumber,Department
+     */
+    @PostMapping("/admins/bulk-csv")
+    public ResponseEntity<?> bulkImportAdmins(@RequestBody Map<String, Object> body) {
+        try {
+            securityUtil.requireSuperAdmin();
+
+            String csvContent = body.get("csvContent") != null ? body.get("csvContent").toString() : null;
+            if (csvContent == null || csvContent.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "CSV content is required"));
+            }
+
+            List<Map<String, Object>> created = new ArrayList<>();
+            List<Map<String, Object>> skipped = new ArrayList<>();
+            List<Map<String, Object>> failed = new ArrayList<>();
+
+            String[] lines = csvContent.split("\n");
+            if (lines.length < 2) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "CSV must have a header row and at least one data row"));
+            }
+
+            // Parse header row (case-insensitive)
+            String[] headers = lines[0].trim().split(",");
+            Map<String, Integer> headerIndex = new HashMap<>();
+            for (int i = 0; i < headers.length; i++) {
+                headerIndex.put(headers[i].trim().toLowerCase().replaceAll("[^a-z]", ""), i);
+            }
+
+            for (int lineNum = 1; lineNum < lines.length; lineNum++) {
+                String line = lines[lineNum].trim();
+                if (line.isEmpty())
+                    continue;
+
+                String[] cols = line.split(",", -1);
+                Map<String, Object> rowInfo = new HashMap<>();
+                rowInfo.put("row", lineNum + 1);
+
+                try {
+                    String name = getValue(cols, headerIndex, "name", "firstname");
+                    String surname = getValue(cols, headerIndex, "surname", "lastname");
+                    String email = getValue(cols, headerIndex, "email");
+                    String staffNumber = getValue(cols, headerIndex, "staffnumber", "staff");
+                    String departmentName = getValue(cols, headerIndex, "department", "dept");
+
+                    rowInfo.put("email", email != null ? email : "");
+                    rowInfo.put("name", name != null ? name : "");
+
+                    if (name == null || name.isEmpty() || email == null || email.isEmpty() || staffNumber == null
+                            || staffNumber.isEmpty()) {
+                        rowInfo.put("reason", "Missing required field(s): Name, Email, or StaffNumber");
+                        failed.add(rowInfo);
+                        continue;
+                    }
+
+                    String trimmedEmail = email.trim().toLowerCase();
+                    if (!trimmedEmail.endsWith("@univen.ac.za")) {
+                        rowInfo.put("reason", "Invalid email domain (must be @univen.ac.za)");
+                        failed.add(rowInfo);
+                        continue;
+                    }
+
+                    // Check duplicates
+                    if (userRepository.findByUsername(trimmedEmail).stream().findFirst().isPresent() ||
+                            adminRepository.findByEmail(trimmedEmail).stream().findFirst().isPresent() ||
+                            adminRepository.findByStaffNumber(staffNumber.trim()).stream().findFirst().isPresent()) {
+                        rowInfo.put("reason", "Admin with this email or staff number already exists");
+                        skipped.add(rowInfo);
+                        continue;
+                    }
+
+                    // Resolve department
+                    Department department = null;
+                    if (departmentName != null && !departmentName.trim().isEmpty()) {
+                        department = departmentRepository.findByName(departmentName.trim()).orElse(null);
+                        if (department == null) {
+                            rowInfo.put("reason", "Department '" + departmentName.trim() + "' not found");
+                            failed.add(rowInfo);
+                            continue;
+                        }
+                    }
+
+                    // Create User
+                    User user = new User();
+                    user.setUsername(trimmedEmail);
+                    user.setEmail(trimmedEmail);
+                    user.setStaffNumber(staffNumber.trim());
+                    user.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+                    user.setRole(User.Role.ADMIN);
+                    user.setRequiresPasswordChange(false);
+                    userRepository.save(user);
+
+                    // Create Admin profile
+                    Admin admin = new Admin();
+                    String fullName = (surname != null && !surname.trim().isEmpty())
+                            ? name.trim() + " " + surname.trim()
+                            : name.trim();
+                    admin.setName(fullName);
+                    admin.setEmail(trimmedEmail);
+                    admin.setStaffNumber(staffNumber.trim());
+                    if (department != null)
+                        admin.setDepartment(department);
+                    adminRepository.save(admin);
+
+                    // Send welcome email
+                    try {
+                        emailService.sendAdminWelcome(trimmedEmail, name.trim());
+                    } catch (Exception emailEx) {
+                        System.err.println(
+                                "Failed to send welcome email to " + trimmedEmail + ": " + emailEx.getMessage());
+                    }
+
+                    rowInfo.put("department", department != null ? department.getName() : null);
+                    created.add(rowInfo);
+
+                } catch (Exception rowEx) {
+                    rowInfo.put("reason", "Processing error: " + rowEx.getMessage());
+                    failed.add(rowInfo);
+                }
+            }
+
+            // Log bulk activity
+            securityUtil.getCurrentUser()
+                    .ifPresent(currentUser -> activityLogService.log(currentUser.getUsername(), "BULK_IMPORT_ADMINS",
+                            "Bulk CSV import: " + created.size() + " created, " + skipped.size() + " skipped, "
+                                    + failed.size() + " failed",
+                            null));
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("message", "Bulk import completed");
+            result.put("totalProcessed", lines.length - 1);
+            result.put("created", created);
+            result.put("skipped", skipped);
+            result.put("failed", failed);
+            result.put("createdCount", created.size());
+            result.put("skippedCount", skipped.size());
+            result.put("failedCount", failed.size());
+
+            return ResponseEntity.ok(result);
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Bulk import failed: " + e.getMessage()));
+        }
+    }
+
+    private String getValue(String[] cols, Map<String, Integer> headerIndex, String... keys) {
+        for (String key : keys) {
+            Integer idx = headerIndex.get(key);
+            if (idx != null && idx < cols.length) {
+                String val = cols[idx].trim().replaceAll("^\"|\"$", ""); // strip quotes
+                if (!val.isEmpty())
+                    return val;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Update admin details (name, email, password, department) (Super Admin only)
      */
     @PutMapping("/admins/{adminId}")
@@ -320,6 +561,9 @@ public class SuperAdminController {
         try {
             securityUtil.requireSuperAdmin();
 
+            if (adminId == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Admin ID is required"));
+            }
             Optional<Admin> adminOpt = adminRepository.findById(adminId);
             if (adminOpt.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Admin not found"));
@@ -410,14 +654,15 @@ public class SuperAdminController {
                     }
                 }
 
-                System.out.println("DEBUG updateAdmin - departmentId from request: " + departmentId + 
-                    " (orig object type: " + (deptIdObj != null ? deptIdObj.getClass().getName() : "null") + ")");
+                System.out.println("DEBUG updateAdmin - departmentId from request: " + departmentId +
+                        " (orig object type: " + (deptIdObj != null ? deptIdObj.getClass().getName() : "null") + ")");
 
                 if (departmentId != null) {
                     Optional<Department> deptOpt = departmentRepository.findById(departmentId);
                     if (deptOpt.isPresent()) {
                         admin.setDepartment(deptOpt.get());
-                        System.out.println("✓ Successfully updated department to: " + deptOpt.get().getName() + " (ID: " + departmentId + ")");
+                        System.out.println("✓ Successfully updated department to: " + deptOpt.get().getName() + " (ID: "
+                                + departmentId + ")");
                     } else {
                         System.out.println("⚠ ERROR: Department not found with ID: " + departmentId);
                         return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -444,12 +689,15 @@ public class SuperAdminController {
             User updatedUser = userRepository.save(user);
 
             // Log admin update
-            User currentUser = securityUtil.getCurrentUser().orElseThrow();
-            activityLogService.log(currentUser.getUsername(), "UPDATE_ADMIN",
-                    "Updated admin: " + admin.getEmail(), null);
+            securityUtil.getCurrentUser()
+                    .ifPresent(currentUser -> activityLogService.log(currentUser.getUsername(), "UPDATE_ADMIN",
+                            "Updated admin: " + admin.getEmail(), null));
 
             // Reload admin to ensure department is properly loaded
-            updatedAdmin = adminRepository.findById(updatedAdmin.getAdminId()).orElse(updatedAdmin);
+            Long finalAdminId = updatedAdmin.getAdminId();
+            if (finalAdminId != null) {
+                updatedAdmin = adminRepository.findById(finalAdminId).orElse(updatedAdmin);
+            }
 
             // Build response
             Map<String, Object> response = new HashMap<>();
@@ -475,8 +723,7 @@ public class SuperAdminController {
                     "email", updatedAdmin.getEmail(),
                     "name", updatedAdmin.getName(),
                     "department", updatedAdmin.getDepartment() != null ? updatedAdmin.getDepartment().getName() : "",
-                    "role", "ADMIN"
-            ));
+                    "role", "ADMIN"));
 
             return ResponseEntity.ok(response);
         } catch (SecurityException e) {
@@ -500,6 +747,9 @@ public class SuperAdminController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Signature is required"));
             }
 
+            if (adminId == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Admin ID is required"));
+            }
             Optional<Admin> adminOpt = adminRepository.findById(adminId);
             if (adminOpt.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Admin not found"));
@@ -538,6 +788,9 @@ public class SuperAdminController {
         try {
             securityUtil.requireSuperAdmin();
 
+            if (adminId == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Admin ID is required"));
+            }
             Optional<Admin> adminOpt = adminRepository.findById(adminId);
             if (adminOpt.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Admin not found"));
@@ -587,9 +840,9 @@ public class SuperAdminController {
             Admin updated = adminRepository.save(admin);
 
             // Log admin update
-            User currentUser = securityUtil.getCurrentUser().orElseThrow();
-            activityLogService.log(currentUser.getUsername(), "UPDATE_ADMIN",
-                    "Updated admin: " + admin.getEmail(), null);
+            securityUtil.getCurrentUser()
+                    .ifPresent(currentUser -> activityLogService.log(currentUser.getUsername(), "UPDATE_ADMIN",
+                            "Updated admin: " + admin.getEmail(), null));
 
             Map<String, Object> response = new HashMap<>();
             response.put("message", "Department updated successfully");
@@ -619,6 +872,9 @@ public class SuperAdminController {
         try {
             securityUtil.requireSuperAdmin();
 
+            if (adminId == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Admin ID is required"));
+            }
             Optional<Admin> adminOpt = adminRepository.findById(adminId);
             if (adminOpt.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Admin not found"));
@@ -666,6 +922,9 @@ public class SuperAdminController {
         try {
             securityUtil.requireSuperAdmin();
 
+            if (adminId == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Admin ID is required"));
+            }
             Optional<Admin> adminOpt = adminRepository.findById(adminId);
             if (adminOpt.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Admin not found"));
@@ -717,6 +976,9 @@ public class SuperAdminController {
         try {
             securityUtil.requireSuperAdmin();
 
+            if (adminId == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Admin ID is required"));
+            }
             Optional<Admin> adminOpt = adminRepository.findById(adminId);
             if (adminOpt.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Admin not found"));
@@ -756,6 +1018,57 @@ public class SuperAdminController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to delete admin: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Delete all admins (Super Admin only, protects Super Admin accounts)
+     */
+    @DeleteMapping("/admins/delete-all")
+    public ResponseEntity<?> deleteAllAdmins() {
+        try {
+            securityUtil.requireSuperAdmin();
+
+            List<Admin> allAdmins = adminRepository.findAll();
+            int deletedCount = 0;
+
+            for (Admin admin : allAdmins) {
+                // Find associated User
+                Optional<User> userOpt = userRepository.findByUsername(admin.getEmail()).stream().findFirst();
+
+                // Protect Super Admin: skip deletion if the user is a Super Admin
+                if (userOpt.isPresent() && userOpt.get().getRole() == User.Role.SUPER_ADMIN) {
+                    System.out.println("ℹ Skipping deletion of Super Admin: " + admin.getEmail());
+                    continue;
+                }
+
+                // Delete associated User
+                userOpt.ifPresent(userRepository::delete);
+
+                // Delete Admin profile
+                adminRepository.delete(admin);
+                deletedCount++;
+            }
+
+            Map<String, Object> response = Map.of(
+                    "message", "All admins deleted successfully (Super Admins preserved)",
+                    "deletedCount", deletedCount);
+
+            // Broadcast real-time update
+            webSocketService.broadcastAdminUpdate("DELETED_ALL", response);
+
+            // Log activity
+            final int finalDeletedCount = deletedCount;
+            securityUtil.getCurrentUser()
+                    .ifPresent(currentUser -> activityLogService.log(currentUser.getUsername(), "DELETE_ALL_ADMINS",
+                            "Deleted all admins (" + finalDeletedCount + " records removed)", null));
+
+            return ResponseEntity.ok(response);
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to delete admins: " + e.getMessage()));
         }
     }
 }

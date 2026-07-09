@@ -112,7 +112,8 @@ class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         // Check if this is a public endpoint (don't log for public endpoints)
-        String requestPath = request.getRequestURI();
+        String rawRequestPath = request.getRequestURI();
+        String requestPath = rawRequestPath != null ? rawRequestPath.replaceAll("//+", "/") : "";
         String requestMethod = request.getMethod();
         boolean isPublicEndpoint = requestPath.startsWith("/api/auth/") ||
                 requestPath.startsWith("/swagger-ui/") ||

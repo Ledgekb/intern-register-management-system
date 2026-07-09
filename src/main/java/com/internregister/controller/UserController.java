@@ -2,7 +2,7 @@ package com.internregister.controller;
 
 import com.internregister.entity.User;
 import com.internregister.repository.UserRepository;
-import com.internregister.service.UserService;
+
 import com.internregister.util.SecurityUtil;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -38,9 +38,8 @@ public class UserController {
         User user = userOpt.get();
         boolean hasSignature = user.getSignature() != null && !user.getSignature().trim().isEmpty();
         return ResponseEntity.ok(Map.of(
-            "hasSignature", hasSignature,
-            "signature", user.getSignature() != null ? user.getSignature() : ""
-        ));
+                "hasSignature", hasSignature,
+                "signature", user.getSignature() != null ? user.getSignature() : ""));
     }
 
     /**
@@ -64,9 +63,7 @@ public class UserController {
         userRepository.save(user);
 
         return ResponseEntity.ok(Map.of(
-            "message", "Signature updated successfully",
-            "hasSignature", true
-        ));
+                "message", "Signature updated successfully",
+                "hasSignature", true));
     }
 }
-

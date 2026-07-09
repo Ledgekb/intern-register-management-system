@@ -17,6 +17,9 @@ public class EmailVerificationService {
     @Autowired
     private VerificationCodeRepository verificationCodeRepository;
 
+    @Autowired
+    private EmailService emailService;
+
     @org.springframework.beans.factory.annotation.Value("${verification.code.expiration.minutes:1}")
     private int expirationMinutes;
 
@@ -40,6 +43,9 @@ public class EmailVerificationService {
 
         verificationCodeRepository.save(verificationCode);
 
+        // Send actual email via Azure
+        emailService.sendVerificationCode(email, code);
+
         // Log the code (in production, send actual email)
         System.out.println("===========================================");
         System.out.println("VERIFICATION CODE FOR: " + email);
@@ -59,7 +65,8 @@ public class EmailVerificationService {
         System.out.println("🔍 Verifying code for email: " + email);
         System.out.println("🔍 Code to verify: '" + code + "' (length: " + code.length() + ")");
 
-        Optional<VerificationCode> verificationCodeOpt = verificationCodeRepository.findByEmailAndCode(email, code).stream().findFirst();
+        Optional<VerificationCode> verificationCodeOpt = verificationCodeRepository.findByEmailAndCode(email, code)
+                .stream().findFirst();
 
         if (verificationCodeOpt.isEmpty()) {
             System.out.println("❌ No verification code found in database for email: " + email);
@@ -92,9 +99,11 @@ public class EmailVerificationService {
         }
 
         System.out.println("✅ Code is valid and not expired");
-        // Code is valid - delete it (one-time use)
-        verificationCodeRepository.delete(verificationCode);
-        System.out.println("✅ Code deleted after successful verification (one-time use)");
+        // We no longer delete here to prevent premature consumption if registration
+        // fails later
+        // verificationCodeRepository.delete(verificationCode);
+        // System.out.println("✅ Code deleted after successful verification (one-time
+        // use)");
         return true;
     }
 

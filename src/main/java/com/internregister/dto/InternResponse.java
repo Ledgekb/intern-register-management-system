@@ -24,4 +24,5 @@ public class InternResponse {
     private Boolean hasContract;
     private Boolean active;
     private Boolean hasLoggedIn;
+    private Boolean isProfileComplete;
 }

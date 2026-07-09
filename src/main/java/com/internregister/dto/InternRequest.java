@@ -15,6 +15,7 @@ public class InternRequest {
     private String field;
     private String employer;
     private String idNumber;
+    private String passportNumber;
     @JsonFormat(pattern = "yyyy-MM-dd")
     private java.time.LocalDate startDate;
     @JsonFormat(pattern = "yyyy-MM-dd")

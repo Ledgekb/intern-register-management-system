@@ -23,6 +23,9 @@ public class Supervisor {
     private String name;
     private String email;
 
+    @Column(unique = true)
+    private String staffNumber;
+
     @ManyToOne
     @JoinColumn(name = "department_id")
     private Department department;
